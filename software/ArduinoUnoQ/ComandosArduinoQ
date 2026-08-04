@@ -1,0 +1,39 @@
+###################COMPILAR
+
+arduino-cli compile --fqbn arduino:zephyr:unoq ~/trekking_ufsc/bridgemcu
+
+###################UPLOAD
+
+arduino-cli upload -p internal --fqbn arduino:zephyr:unoq ~/trekking_ufsc/bridgemcu
+
+
+#SERVIÇO
+
+Recarregar deamon: sudo systemctl daemon-reload
+
+Iniciar o serviço: sudo systemctl start ia_trekking.service
+
+Parar o serviço: sudo systemctl stop ia_trekking.service
+
+Verificar status: systemctl status ia_trekking.service
+
+Ver logs em tempo real: journalctl -u ia_trekking.service -f
+
+Habilitar no boot: sudo systemctl enable ia_trekking.service
+
+#ACESSO
+
+Acesso arduino: ssh arduino@192.168.1.50 (IP)
+
+Transferir arquivo PC - ARDUINO: scp /caminho/ia_trekking.py arduino@ip:/caminho/
+
+Transferir arquivo ARDUINO - PC: scp arduino@ip-do-robo:/caminho/arquivo.txt /caminho/
+Ex: scp arduino@172.20.10.3:~/trekking_ufsc/ia_trekking.py /home/gabrielsodre/
+
+#OUTROS
+
+Listar portas seriais disponíveis: ls /dev/tty*
+
+Verificar consumo da CPU: top ou htop
+
+
