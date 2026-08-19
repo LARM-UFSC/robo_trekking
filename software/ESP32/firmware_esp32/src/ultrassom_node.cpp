@@ -1,7 +1,6 @@
 #include "ultrassom_node.hpp"
 
 
-volatile char comandoCamera = 'S'; 
 
 // ULTRASSON - CONFIGURAÇÃO NEWPING
 const int PIN_TRIGGER = 26;   
@@ -19,13 +18,14 @@ NewPing sonar4(PIN_TRIGGER, PIN_ECHO_4, MAX_DISTANCE);
 
 const long intervaloCicloTotal = 100; 
 
-volatile float dist_1 = 400.0f, dist_2 = 400.0f, dist_3 = 400.0f, dist_4 = 400.0f;
+volatile float dist_1 = INVALID_DISTANCE, dist_2 = INVALID_DISTANCE, 
+                dist_3 = INVALID_DISTANCE, dist_4 = INVALID_DISTANCE;
 
 
 float processarLeituraNewPing(unsigned int ping_us) {
-  if (ping_us == 0) return 400.0f;
+  if (ping_us == 0) return INVALID_DISTANCE;
   float cm = (float)ping_us / US_ROUNDTRIP_CM;
-  if (cm < 4.0f) return 400.0f;
+  if (cm < 4.0f) return INVALID_DISTANCE;
   return cm;
 }
 

@@ -2,10 +2,11 @@
 #define ULTRASSOM_NODE_HPP
 
 #include <NewPing.h>
+#include "motores_node.hpp"
+
 
 #define LED_AZUL 2
-
-extern volatile char comandoCamera; 
+#define INVALID_DISTANCE 999.0f 
 
 // ULTRASSON - CONFIGURAÇÃO NEWPING
 extern const int PIN_TRIGGER;   

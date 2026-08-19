@@ -22,16 +22,33 @@
 
 Adafruit_MPU6050 mpu;
 
+static bool mpuOk = false;
 
 void InicializarMPU(void)
 {
-    Wire.begin(SDA_PIN, SCL_PIN);
 
-    if (!mpu.begin()) {
+    Wire.begin(SDA_PIN, SCL_PIN);
+    
+    //logica de verificação da mpu
+    const unsigned long TIMEOUT_MS = 5000;
+    unsigned long inicio = millis();
+
+    while(millis() - inicio < TIMEOUT_MS){
+        if (!mpu.begin()) {
         Serial.println("Falha ao encontrar o MPU6050!");
-        while (1) { delay(10); }
+        }
+        else {
+            Serial.println("MPU6050 encontrado!");
+            mpuOk = true;
+            break;
+        }
+        
+        delay(250);
     }
-    Serial.println("MPU6050 encontrado!");
+
+    if(!mpuOk) { 
+        Serial.println("Sem MPU - seguindo sem IMU."); return; 
+    }
 
     mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
     mpu.setGyroRange(MPU6050_RANGE_250_DEG);
@@ -49,6 +66,7 @@ void InicializarMPU(void)
 
 void LeituraMPU(void)
 {
+    if(!mpuOk) return;
     static unsigned long last_ms = 0;
     unsigned long now = millis();
 
