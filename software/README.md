@@ -19,7 +19,10 @@ trekking_ufsc/
 │   ├── ia_trekking.py
 │   └── ComandosArduinoQ
 ├── ESP32/
-│   └── main.cpp
+│   └── firmware_esp32/     # projeto PlatformIO
+│       ├── platformio.ini
+│       ├── include/
+│       └── src/
 ├── VisãoComputacional/
 │   ├── Conversao.py
 │   ├── Treiner.py
@@ -38,9 +41,13 @@ A pasta ArduinoUnoQ contém o firmware e o script de inferência usados para int
 
 ### 2. ESP32
 
-A pasta ESP32 contém o firmware responsável pela leitura de sensores ultrassônicos e pela comunicação com o restante do sistema.
+A pasta ESP32 contém o firmware responsável pela leitura dos sensores, pelo acionamento dos motores e pela comunicação com o restante do sistema. É um projeto PlatformIO, em `firmware_esp32/`, organizado em nodes:
 
-- main.cpp: lê os sensores, recebe comandos da câmera e publica os dados para depuração via serial.
+- ultrassom_node: lê os 4 sensores HC-SR04 em uma task dedicada e recebe o comando da câmera pela Serial2.
+- mpu_node: lê o MPU6050 (aceleração, rotação e inclinação) via I2C.
+- motores_node: traduz o comando recebido em acionamento dos motores de tração e direção, via PWM nas pontes H.
+
+Detalhes de pinagem, protocolo e limitações estão no README da pasta ESP32.
 
 ### 3. Visão computacional
 
@@ -58,7 +65,7 @@ O fluxo de software do projeto pode ser descrito assim:
 3. O script Python gera um comando de direção, como L, R, F ou S.
 4. O comando é enviado para o firmware do Arduino Uno Q.
 5. O firmware repassa o comando para o ESP32 via Serial.
-6. O ESP32 coleta dados dos sensores ultrassônicos e auxilia na leitura do ambiente.
+6. O ESP32 aciona os motores conforme o comando e coleta os dados dos sensores ultrassônicos e da IMU.
 
 ## Requisitos
 
@@ -74,10 +81,11 @@ Além disso, o script Python da pasta ArduinoUnoQ depende do pacote arduino.app_
 
 ### Firmware embarcado
 
-- Arduino IDE ou PlatformIO
-- Arduino CLI, se for usar linha de comando
-- Biblioteca NewPing para o firmware ESP32
+- PlatformIO, para o firmware do ESP32
+- Arduino IDE ou Arduino CLI, para o firmware do Arduino Uno Q
 - Placa compatível com Arduino Uno Q e ESP32
+
+As bibliotecas do ESP32 (NewPing e Adafruit MPU6050) estão declaradas em `platformio.ini` e não precisam ser instaladas à mão.
 
 ## Como executar o software
 
@@ -94,9 +102,15 @@ pip install opencv-python ultralytics
 
 Use o firmware da pasta ArduinoUnoQ para carregar o código no módulo correspondente.
 
-### 3. Compilar e enviar o firmware ESP32 - NO AMBIENTE ESP32
+### 3. Compilar e enviar o firmware ESP32 - NO COMPUTADOR
 
-Abra o arquivo main.cpp na pasta ESP32 em um ambiente compatível e faça o upload para a placa ESP32.
+O firmware é um projeto PlatformIO. As bibliotecas são resolvidas automaticamente:
+
+```bash
+cd ESP32/firmware_esp32
+pio run -t upload
+pio device monitor
+```
 
 ### 4. Treinar ou preparar o modelo de visão - NO COMPUTADOR
 

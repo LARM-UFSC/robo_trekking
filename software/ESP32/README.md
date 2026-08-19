@@ -1,55 +1,114 @@
 # ESP32
 
-Este diretório contém o firmware do módulo ESP32 usado no projeto de trekking para leitura de sensores e leitura de comandos recebidos via comunicação serial.
+Este diretório contém o firmware do módulo ESP32 do robô de trekking. Ele lê os
+sensores de bordo, recebe os comandos de direção vindos da câmera e aciona os
+motores.
+
+O firmware é um projeto **PlatformIO** com framework **Arduino**, em
+`firmware_esp32/`. A placa alvo é a `esp32dev`.
 
 ## O que o firmware faz
 
-O código realiza as seguintes tarefas:
+- lê 4 sensores ultrassônicos HC-SR04 em uma task dedicada
+- lê o MPU6050 (acelerômetro, giroscópio e inclinação) via I2C
+- recebe o comando da câmera por `Serial2`
+- aciona os motores de tração e de direção conforme o comando
+- publica telemetria no monitor serial para depuração
 
-- lê 4 sensores ultrassônicos
-- recebe um comando de câmera via Serial2
-- armazena os valores das leituras em variáveis internas
-- imprime no monitor serial os valores de câmera e dos sensores de forma simples
+## Estrutura
 
-## Funcionalidades principais
+```text
+firmware_esp32/
+├── platformio.ini
+├── include/
+│   ├── motores_node.hpp
+│   ├── mpu_node.hpp
+│   └── ultrassom_node.hpp
+└── src/
+    ├── main.cpp            # setup() e loop()
+    ├── motores_node.cpp    # pontes H, PWM e tradução do comando
+    ├── mpu_node.cpp        # MPU6050 via I2C
+    └── ultrassom_node.cpp  # 4 HC-SR04 e leitura do Serial2
+```
 
-- leitura dos sensores ultrassônicos com a biblioteca NewPing
-- comunicação serial com outro módulo ou computador
-- uso de uma tarefa dedicada para coletar leituras dos sensores em paralelo
-- saída simples e direta para depuração via Serial
-
-## Arquivos
-
-- `main.cpp`
-  - contém o firmware principal
-  - inicializa os pinos, a comunicação serial e os sensores
-  - executa a leitura dos sensores em uma task separada
-  - imprime os valores no monitor serial
+Cada "node" é um par `.cpp` em `src/` mais `.hpp` em `include/`, com o estado
+compartilhado exposto via `extern`.
 
 ## Dependências
 
-Para compilar e usar este firmware, são necessárias:
+Declaradas em `platformio.ini` e instaladas automaticamente pelo PlatformIO:
 
-- Arduino IDE ou PlatformIO
-- placa compatível com ESP32
-- biblioteca `NewPing`
+- `teckel12/NewPing`
+- `adafruit/Adafruit MPU6050`
+- `adafruit/Adafruit Unified Sensor`
+- `adafruit/Adafruit BusIO`
 
 ## Como compilar e enviar
 
-1. abra o arquivo `main.cpp` em um ambiente compatível com ESP32
-2. instale a biblioteca `NewPing`
-3. selecione a placa correta, como `ESP32 Dev Module`
-4. compile e faça o upload para o ESP32
+```bash
+cd firmware_esp32
+pio run                 # compila
+pio run -t upload       # grava no ESP32
+pio device monitor      # monitor serial
+```
+
+A porta e a velocidade estão fixadas em `platformio.ini`: `/dev/ttyACM0` e
+115200 baud. Ajuste conforme a sua máquina.
+
+## Mapa de pinos
+
+| Função | GPIO |
+|---|---|
+| Motor direção — esquerda / direita | 23 / 4 |
+| Motor tração — frente / trás | 13 / 32 |
+| Ultrassom TRIGGER (comum aos 4) | 26 |
+| ECHO 1 (frente-direita) | 25 |
+| ECHO 2 (frente-esquerda) | 27 |
+| ECHO 3 (trás-direita) | 33 |
+| ECHO 4 (trás-esquerda) | 34 |
+| I2C SDA / SCL (MPU6050) | 21 / 22 |
+| UART2 RX / TX (câmera) | 16 / 14 |
+| LED azul | 2 |
+| LED de inclinação | 19 |
+
+Os quatro canais PWM (LEDC 0–3) usam 5 kHz e 8 bits de resolução.
+
+## Protocolo da câmera
+
+Um byte em `Serial2`, enviado pelo Arduino Uno Q:
+
+| Byte | Significado | Tração | Direção |
+|---|---|---|---|
+| `'F'` | frente | ligada | centro |
+| `'L'` | esquerda | ligada | esquerda |
+| `'R'` | direita | ligada | direita |
+| `'S'` | parar | desligada | centro |
+
+Qualquer outro byte é tratado como `'S'`.
 
 ## Como funciona
 
-1. o ESP32 inicializa a comunicação serial e os pinos usados pelos sensores
-2. uma task dedicada lê continuamente os sensores ultrassônicos
-3. o valor recebido pela câmera é lido pela Serial2
-4. o programa imprime no monitor serial os dados coletados
+- **Core 0** — `TaskSensores` dispara os 4 sonares em sequência e grava em
+  `dist_1..dist_4`. Leitura inválida ou abaixo de 4 cm vira `INVALID_DISTANCE`.
+- **Core 1 (loop)** — lê o byte da câmera, aciona os motores, imprime a
+  telemetria e lê o MPU6050 a 5 Hz.
 
-## Observações
+O motor de direção é DC, sem realimentação de posição. Por isso o esterço é
+**pulsado** (250 ms acionado, 250 ms solto): acionamento contínuo o levaria ao
+batente mecânico e o deixaria travado, com corrente de rotor bloqueado. Quem
+fecha a malha de posição é a câmera, que observa o resultado e corrige o
+comando no frame seguinte.
 
-- o firmware foi deixado em uma versão simples, focada apenas na leitura e exibição dos dados
-- os valores de distância são mostrados em centímetros
-- o comando da câmera é exibido junto com um valor numérico simplificado para facilitar a depuração
+Se o MPU6050 não responder, o firmware tenta por até 5 segundos e segue sem
+IMU, em vez de travar o boot.
+
+## Estado atual e limitações
+
+- O acionamento dos motores **ainda não foi validado no hardware**. Faça o
+  primeiro teste com o robô suspenso, conferindo sentido de giro e o
+  comportamento do esterço.
+- Não há timeout no comando da câmera: se a comunicação cair, o último comando
+  vale indefinidamente. Antes de testar com o robô no chão, tenha um timeout ou
+  uma chave física na alimentação dos motores.
+- As distâncias dos ultrassônicos são publicadas mas ainda não entram na
+  decisão de navegação.
