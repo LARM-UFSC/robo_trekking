@@ -2,10 +2,6 @@
  * Firmware do MCU do Arduino Uno Q (STM32U585 / Zephyr).
  *
  * Recebe o comando de direcao da CPU Linux pela Bridge e aciona os motores.
- *
- * Protocolo (1 byte):
- *   'F' frente   'L' frente+esquerda   'R' frente+direita
- *   'B' re       'S' parar             outro byte = parar
  * Ultrassom e MPU6050 sao opcionais: se nao compilarem, desligue pelas
  * flags abaixo e o robo continua andando.
  *
@@ -15,7 +11,7 @@
  *   3) ligue o MPU
  */
 
-#define USAR_ULTRASSOM 1
+#define USAR_ULTRASSOM 0
 #define USAR_MPU       0   // desligada por enquanto
 
 #include <Arduino_RouterBridge.h>
@@ -37,19 +33,18 @@
 #define PIN_DIR 11    // PB15 TIM1_CH3N — direcao direita
 
 // 3 sensores na frente, 1 atras. TRIGGER unico, comum a todos.
-#define PIN_TRIGGER    2    // PB3   disparo compartilhado
-#define ECHO_CENTRO    4    // PA12  frontal central
-#define ECHO_DIREITA   6    // PB1   frontal direito
-#define ECHO_ESQUERDA  8    // PB4   frontal esquerdo
-// Traseiro desativado por enquanto. Pino reservado.
-// #define ECHO_TRAS  13    // PB13
+#define PIN_TRIGGER 2    // PB3   disparo compartilhado
+#define ECHO_1      4    // PA12  frente
+#define ECHO_2      6    // PB1   frente
+#define ECHO_3      8    // PB4   frente
+// Sensor 4 (traseiro) desativado por enquanto. Pino reservado.
+// #define ECHO_4  13    // PB13  traseiro
 // Livres apos unificar o trigger: D5, D7, D12
 
 // I2C do MPU: D20 = PB11 (I2C2_SDA), D21 = PB10 (I2C2_SCL)
 
 /* ─────────── PARAMETROS ─────────── */
 const int dutyTracao  = 178;   // 0-255
-const int dutyRe      = 140;   // re mais devagar que a marcha a frente
 const int dutyDirecao = 178;
 
 const unsigned long TEMPO_ESTERCO_MS   = 250;
@@ -64,10 +59,9 @@ const unsigned long INTERVALO_LOG_MS   = 300;
 volatile char comandoCamera = 'S';
 
 #if USAR_ULTRASSOM
-float frenteCentro   = INVALID_DISTANCE;
-float frenteDireita  = INVALID_DISTANCE;
-float frenteEsquerda = INVALID_DISTANCE;
-// float tras = INVALID_DISTANCE;
+float dist_1 = INVALID_DISTANCE, dist_2 = INVALID_DISTANCE;
+float dist_3 = INVALID_DISTANCE;
+// float dist_4 = INVALID_DISTANCE;   // traseiro
 #endif
 
 #if USAR_MPU
@@ -113,10 +107,8 @@ void aplicarComando(char cmd) {
 
   if (cmd == 'F' || cmd == 'L' || cmd == 'R') {
     acionarPonte(PIN_FR, PIN_TR, dutyTracao);
-  } else if (cmd == 'B') {
-    acionarPonte(PIN_FR, PIN_TR, -dutyRe);      // re
   } else {
-    acionarPonte(PIN_FR, PIN_TR, 0);            // 'S' e qualquer byte estranho
+    acionarPonte(PIN_FR, PIN_TR, 0);
   }
 
   const unsigned long CICLO = TEMPO_ESTERCO_MS * 2;
@@ -129,7 +121,7 @@ void aplicarComando(char cmd) {
   } else if (cmd == 'R') {
     acionarPonte(PIN_ESQ, PIN_DIR, -dutyDirecao);
   } else {
-    acionarPonte(PIN_ESQ, PIN_DIR, 0);          // 'F', 'B' e 'S': esterco solto
+    acionarPonte(PIN_ESQ, PIN_DIR, 0);
   }
 }
 
@@ -150,7 +142,7 @@ void inicializarSonares() {
   pinMode(PIN_TRIGGER, OUTPUT);
   digitalWrite(PIN_TRIGGER, LOW);
 
-  const int echos[] = {ECHO_CENTRO, ECHO_DIREITA, ECHO_ESQUERDA /*, ECHO_TRAS */};
+  const int echos[] = {ECHO_1, ECHO_2, ECHO_3 /*, ECHO_4 */};
   for (unsigned i = 0; i < sizeof(echos) / sizeof(echos[0]); i++) {
     pinMode(echos[i], INPUT);
   }
@@ -174,7 +166,7 @@ void atualizarSonares() {
   if (millis() - ultimo < INTERVALO_SONAR_MS) return;
   ultimo = millis();
 
-  const int   echos[] = {ECHO_CENTRO, ECHO_DIREITA, ECHO_ESQUERDA /*, ECHO_TRAS */};
+  const int   echos[] = {ECHO_1, ECHO_2, ECHO_3 /*, ECHO_4 */};
   const int   N       = sizeof(echos) / sizeof(echos[0]);
   unsigned long inicio[N], largura[N];
   bool subiu[N], pronto[N];
@@ -209,10 +201,10 @@ void atualizarSonares() {
     }
   }
 
-  frenteCentro = pronto[0] ? usParaCm(largura[0]) : INVALID_DISTANCE;
-  frenteDireita = pronto[1] ? usParaCm(largura[1]) : INVALID_DISTANCE;
-  frenteEsquerda = pronto[2] ? usParaCm(largura[2]) : INVALID_DISTANCE;
-// tras = pronto[3] ? usParaCm(largura[3]) : INVALID_DISTANCE;
+  dist_1 = pronto[0] ? usParaCm(largura[0]) : INVALID_DISTANCE;
+  dist_2 = pronto[1] ? usParaCm(largura[1]) : INVALID_DISTANCE;
+  dist_3 = pronto[2] ? usParaCm(largura[2]) : INVALID_DISTANCE;
+// dist_4 = pronto[3] ? usParaCm(largura[3]) : INVALID_DISTANCE;
 }
 
   #endif  // USAR_ULTRASSOM
@@ -272,10 +264,10 @@ void imprimirTelemetria() {
   Serial.print("Camera: ");
   Serial.print((char)comandoCamera);
 #if USAR_ULTRASSOM
-  Serial.print(" | Esq: ");   Serial.print(frenteEsquerda, 1);
-  Serial.print(" Centro: ");  Serial.print(frenteCentro, 1);
-  Serial.print(" Dir: ");     Serial.print(frenteDireita, 1);
-// Serial.print(" Tras: ");    Serial.print(tras, 1);
+  Serial.print(" | S1: "); Serial.print(dist_1, 1);
+  Serial.print(" S2: ");   Serial.print(dist_2, 1);
+  Serial.print(" S3: ");   Serial.print(dist_3, 1);
+// Serial.print(" S4: ");   Serial.print(dist_4, 1);
 #endif
   Serial.println();
 }
@@ -311,3 +303,4 @@ void loop() {
 #endif
   imprimirTelemetria();
 }
+                                                                                                                    
