@@ -2,6 +2,7 @@ import cv2
 import time
 import os
 import sys
+import glob
 
 sys.path.insert(0, '/home/arduino/.local/lib/python3.13/site-packages')
 sys.path.insert(0, '/usr/local/lib/python3.13/dist-packages')
@@ -20,19 +21,45 @@ except Exception as e:
     print(f"Erro ao carregar o modelo: {e}")
     sys.exit()
 
-cap = cv2.VideoCapture(2)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+CAM_GLOB = '/dev/v4l/by-id/*046d_0825*index0'
+
+def abrirCamera():
+    caminhos = sorted(glob.glob(CAM_GLOB))
+    if not caminhos:
+        return None
+    c = cv2.VideoCapture(caminhos[0], cv2.CAP_V4L2)
+    if not c.isOpened():
+        c.release()
+        return None
+    c.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    c.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    print(f"Camera aberta em {caminhos[0]}")
+    return c
+
+cap = abrirCamera()
+falhas = 0
 
 def loop():
-    global frame_count, start_time
-    
-    if not cap.isOpened():
-        return
+    global frame_count, start_time, cap, falhas
+
+    if cap is None:
+        cap = abrirCamera()
+        if cap is None:
+            time.sleep(1.0)
+            return
+        falhas = 0
 
     ret, frame = cap.read()
     if not ret:
+        falhas += 1
+        if falhas >= 10:
+            print("Camera caiu, reabrindo...")
+            cap.release()
+            cap = None
+            falhas = 0
         return
+
+    falhas = 0
 
     results = model(frame, conf=0.6, imgsz=320, stream=True, verbose=False)
     comando = "S"
@@ -77,4 +104,5 @@ if __name__ == "__main__":
             Bridge.call("processa_direcao", "S")
         except:
             pass
-        cap.release()
+        if cap is not None:
+            cap.release()
