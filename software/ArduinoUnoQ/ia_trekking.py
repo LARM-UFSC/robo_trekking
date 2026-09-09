@@ -33,8 +33,32 @@ def abrirCamera():
         return None
     c.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     c.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    # Pede fila de 1 frame. O backend V4L2 nem sempre respeita, por isso o
+    # descarte em frameMaisRecente() -- os dois juntos, nao um ou outro.
+    c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     print(f"Camera aberta em {caminhos[0]}")
     return c
+
+
+# A camera entrega 30 FPS e a inferencia consome ~6. O V4L2 enfileira o excesso
+# e cap.read() devolve o frame MAIS ANTIGO da fila, entao o robo decide sobre uma
+# imagem de varias centenas de ms atras -- sem que o FPS medido acuse nada.
+#
+# Aqui descartamos a fila para ficar com o frame mais novo. O criterio e o tempo
+# do proprio grab: frame que ja estava na fila volta na hora, enquanto o primeiro
+# grab que precisa ESPERAR o sensor indica que chegamos na borda viva. Assim o
+# descarte se auto-ajusta e nao trava se a fila for curta ou o FPS cair.
+LIMITE_GRAB_MS = 5.0
+MAX_DESCARTES  = 8
+
+def frameMaisRecente(c):
+    for _ in range(MAX_DESCARTES):
+        inicio = time.time()
+        if not c.grab():
+            return False, None
+        if (time.time() - inicio) * 1000.0 > LIMITE_GRAB_MS:
+            break
+    return c.retrieve()
 
 cap = abrirCamera()
 falhas = 0
@@ -49,7 +73,7 @@ def loop():
             return
         falhas = 0
 
-    ret, frame = cap.read()
+    ret, frame = frameMaisRecente(cap)
     if not ret:
         falhas += 1
         if falhas >= 10:
