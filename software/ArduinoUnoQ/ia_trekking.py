@@ -15,7 +15,7 @@ frame_count = 0
 start_time = time.time()
 
 try:
-    model = YOLO(MODEL_PATH, task='segment')
+    model = YOLO(MODEL_PATH, task='detect')
     print("YOLO carregado")
 except Exception as e:
     print(f"Erro ao carregar o modelo: {e}")
