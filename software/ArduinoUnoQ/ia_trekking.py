@@ -4,13 +4,16 @@ import os
 import sys
 import glob
 
-sys.path.insert(0, '/home/arduino/.local/lib/python3.13/site-packages')
-sys.path.insert(0, '/usr/local/lib/python3.13/dist-packages')
-
 from ultralytics import YOLO
-from arduino.app_utils import Bridge 
+from arduino.router_bridge import Bridge 
+from pathlib import Path
 
-MODEL_PATH = 'best_ncnn_model'
+bridge = Bridge()
+bridge.connect(timeout=5)
+
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_PATH = str(BASE_DIR.parent / "VisãoComputacional" / "best_ncnn_model")
+
 frame_count = 0
 start_time = time.time()
 
@@ -27,24 +30,27 @@ def abrirCamera():
     caminhos = sorted(glob.glob(CAM_GLOB))
     if not caminhos:
         return None
-    c = cv2.VideoCapture(caminhos[0], cv2.CAP_V4L2)
+    caminho_real = os.path.realpath(caminhos[0])
+    try:
+        indice = int(caminho_real.replace('/dev/video', ''))
+    except ValueError:
+        print(f"Não consegui extrair índice de {caminho_real}")
+        return None
+    c = cv2.VideoCapture(indice, cv2.CAP_V4L2)
     if not c.isOpened():
         c.release()
         return None
     c.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     c.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    # Pede fila de 1 frame. O backend V4L2 nem sempre respeita, por isso o
-    # descarte em frameMaisRecente() -- os dois juntos, nao um ou outro.
     c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    print(f"Camera aberta em {caminhos[0]}")
+    print(f"Camera aberta em /dev/video{indice} (symlink: {caminhos[0]})")
     return c
 
 
-# A camera entrega 30 FPS e a inferencia consome ~6. O V4L2 enfileira o excesso
-# e cap.read() devolve o frame MAIS ANTIGO da fila, entao o robo decide sobre uma
-# imagem de varias centenas de ms atras -- sem que o FPS medido acuse nada.
-#
-# Aqui descartamos a fila para ficar com o frame mais novo. O criterio e o tempo
+# a camera entrega 30 FPS e a inferencia consome ~6. O V4L2 enfileira o excesso
+#e cap.read() devolve o ultimo frame  da fila entao o robo decide sobre uma
+#imagem de varias centenas de ms atras.
+# aqui descartamos a fila para ficar com o frame mais novo. O criterio e o tempo
 # do proprio grab: frame que ja estava na fila volta na hora, enquanto o primeiro
 # grab que precisa ESPERAR o sensor indica que chegamos na borda viva. Assim o
 # descarte se auto-ajusta e nao trava se a fila for curta ou o FPS cair.
@@ -85,7 +91,7 @@ def loop():
 
     falhas = 0
 
-    results = model(frame, conf=0.6, imgsz=320, stream=True, verbose=False)
+    results = model(frame, conf=0.8, imgsz=320, verbose=False)
     comando = "S"
 
     for r in results:
@@ -106,7 +112,7 @@ def loop():
                 break 
 
     try:
-        Bridge.call("processa_direcao", comando)
+        bridge.call("processa_direcao", comando)
     except Exception as e:
         print(f"Erro na chamada da Bridge: {e}")
 
@@ -125,7 +131,7 @@ if __name__ == "__main__":
             time.sleep(0.01)
     except KeyboardInterrupt:
         try:
-            Bridge.call("processa_direcao", "S")
+            bridge.call("processa_direcao", "S")
         except:
             pass
         if cap is not None:
