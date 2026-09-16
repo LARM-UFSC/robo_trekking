@@ -13,19 +13,21 @@
  * Organizacao (headers-only, todos incluidos so por este arquivo):
  *   motores.hpp    pinos, pontes H, tracao e esterco
  *   ultrassom.hpp  3 HC-SR04 com trigger unico   (gated por USAR_ULTRASSOM)
+ *   desvio.hpp     desvio de obstaculo            (gated por USAR_ULTRASSOM)
  *   mpu.hpp        MPU6050 via I2C               (gated por USAR_MPU)
  *
  * As flags precisam ser definidas ANTES dos includes: os headers de sensor
  * dependem delas para decidir se geram codigo.
  */
 
-#define USAR_ULTRASSOM 0
+#define USAR_ULTRASSOM 1
 #define USAR_MPU       0   // desligada por enquanto
 
 #include <Arduino_RouterBridge.h>
 
 #include "motores.hpp"
 #include "ultrassom.hpp"
+#include "desvio.hpp"
 #include "mpu.hpp"
 
 /* ─────────── PARAMETROS ─────────── */
@@ -82,6 +84,7 @@ void imprimirTelemetria() {
   Serial.print(" S3: ");   Serial.print(dist_3, 1);
 // Serial.print(" S4: ");   Serial.print(dist_4, 1);
 #endif
+  if (emDesvio()) Serial.print(" [DESVIO]");
   Serial.println();
 }
 
@@ -110,13 +113,17 @@ void loop() {
   const bool fresco = comandoEstaFresco();
 
   // Link caido vira 'S': tracao e esterco soltos.
-  aplicarComando(fresco ? comandoCamera : 'S');
+  const char cmdCamera = fresco ? comandoCamera : 'S';
+
+#if USAR_ULTRASSOM
+  atualizarSonares();   // antes do desvio: ele decide com o dado deste ciclo
+#endif
+
+  // O ultrassom tem prioridade sobre a camera: obstaculo fisico ganha da visao.
+  aplicarComando(aplicarDesvio(cmdCamera));
 
   // LED aceso = recebendo comando. Diagnostico de bancada sem serial.
   digitalWrite(LED_BUILTIN, fresco ? HIGH : LOW);
-#if USAR_ULTRASSOM
-  atualizarSonares();
-#endif
 #if USAR_MPU
   lerMPU();
 #endif
