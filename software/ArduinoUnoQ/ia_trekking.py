@@ -7,6 +7,7 @@ import glob
 from ultralytics import YOLO
 from arduino.router_bridge import Bridge 
 from pathlib import Path
+from datetime import datetime
 
 bridge = Bridge()
 bridge.connect(timeout=5)
@@ -23,6 +24,37 @@ try:
 except Exception as e:
     print(f"Erro ao carregar o modelo: {e}")
     sys.exit()
+
+# ─────────── LOG DE DISTANCIAS (ultrassom do MCU) ───────────
+# O MCU chama "registra_distancias" a cada 200 ms via Bridge.notify. Aqui so
+# recebemos e gravamos: quem sobe o ia_trekking ja leva o log junto, sem
+# precisar de um segundo processo lendo a serial.
+#
+# Caminho absoluto a partir do arquivo, nao do cwd -- mesmo motivo do MODEL_PATH.
+ARQUIVO_DIST   = str(BASE_DIR / "distancias.txt")
+CABECALHO_DIST = "# hora;millis;frente_cm;direita_cm;esquerda_cm\n"
+
+_arq_dist = None
+
+def registra_distancias(millis, frente, direita, esquerda):
+    """Chamado pelo MCU. Uma linha por medicao do ultrassom."""
+    global _arq_dist
+    if _arq_dist is None:
+        # buffering=1: da para acompanhar o arquivo com o robo andando
+        _arq_dist = open(ARQUIVO_DIST, "a", buffering=1, encoding="utf-8")
+        if _arq_dist.tell() == 0:
+            _arq_dist.write(CABECALHO_DIST)
+
+    hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    _arq_dist.write(f"{hora};{millis};{frente:.1f};{direita:.1f};{esquerda:.1f}\n")
+
+try:
+    bridge.provide("registra_distancias", registra_distancias)
+    print(f"Log de distancias ativo em {ARQUIVO_DIST}")
+except Exception as e:
+    # Log e acessorio: se a Bridge nao expuser provide, o robo anda sem ele.
+    # A linha DIST; continua saindo na serial como reserva.
+    print(f"Sem log de distancias pela Bridge: {e}")
 
 CAM_GLOB = '/dev/v4l/by-id/*046d_0825*index0'
 
@@ -136,3 +168,5 @@ if __name__ == "__main__":
             pass
         if cap is not None:
             cap.release()
+        if _arq_dist is not None:
+            _arq_dist.close()

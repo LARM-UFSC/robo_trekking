@@ -45,6 +45,10 @@ const unsigned long INTERVALO_LOG_MS = 300;
  */
 const unsigned long TIMEOUT_COMANDO_MS = 800;
 
+// Periodo da linha de log das distancias. Nao adianta ser menor que o
+// INTERVALO_SONAR_MS (60 ms) do ultrassom: repetiria a mesma medicao.
+const unsigned long INTERVALO_DIST_MS = 200;
+
 /* ─────────── ESTADO ─────────── */
 volatile char comandoCamera = 'S';
 volatile unsigned long ultimoComandoMs = 0;
@@ -88,6 +92,47 @@ void imprimirTelemetria() {
   Serial.println();
 }
 
+/* ═══════════ LOG DE DISTANCIAS ═══════════ */
+
+/*
+ * Linha de formato fixo para ser lida por script, separada da telemetria
+ * humana pelo prefixo DIST;. Campos:
+ *
+ *   DIST;<millis>;<frente>;<direita>;<esquerda>
+ *
+ * O MCU nao tem sistema de arquivos util, entao quem grava o .txt e o
+ * log_ultrassom.py do lado Linux, consumindo estas linhas.
+ */
+#if USAR_ULTRASSOM
+
+void registrarDistancias() {
+  static unsigned long ultimo = 0;
+  if (millis() - ultimo < INTERVALO_DIST_MS) return;
+  const unsigned long agora = millis();
+  ultimo = agora;
+
+  /* Caminho principal: entrega ao lado Linux, que grava o .txt de dentro do
+   * ia_trekking.py. notify() e "dispare e esqueca" -- se ninguem do outro lado
+   * tiver registrado o metodo, a chamada nao bloqueia nem da erro, o robo segue.
+   *
+   * NAO chamar isto de dentro de um callback RPC (processa_direcao): a propria
+   * biblioteca avisa que call/notify dentro de callback trava a IPC. Aqui
+   * estamos no loop(), que e seguro. */
+  Bridge.notify("registra_distancias", agora, dist_1, dist_2, dist_3);
+
+  /* Caminho reserva: a mesma linha na serial, para o log_ultrassom.py via pipe
+   * e para leitura humana no monitor. */
+  Serial.print("DIST;");
+  Serial.print(agora);      Serial.print(';');
+  Serial.print(dist_1, 1);  Serial.print(';');
+  Serial.print(dist_2, 1);  Serial.print(';');
+  Serial.println(dist_3, 1);
+}
+
+#else
+inline void registrarDistancias() {}   // ultrassom desligado: nada a registrar
+#endif
+
 /* ═══════════ SETUP / LOOP ═══════════ */
 
 void setup() {
@@ -121,6 +166,8 @@ void loop() {
 
   // O ultrassom tem prioridade sobre a camera: obstaculo fisico ganha da visao.
   aplicarComando(aplicarDesvio(cmdCamera));
+
+  registrarDistancias();
 
   // LED aceso = recebendo comando. Diagnostico de bancada sem serial.
   digitalWrite(LED_BUILTIN, fresco ? HIGH : LOW);

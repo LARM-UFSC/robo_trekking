@@ -21,8 +21,8 @@
 // 3 sensores na frente, 1 atras. TRIGGER unico, comum a todos.
 #define PIN_TRIGGER 2    // PB3   disparo compartilhado
 #define ECHO_1      4    // PA12  frente
-#define ECHO_2      6    // PB1   frente
-#define ECHO_3      8    // PB4   frente
+#define ECHO_2      6    // PB1   esquerda
+#define ECHO_3      8    // PB4   direita
 // Sensor 4 (traseiro) desativado por enquanto. Pino reservado.
 // #define ECHO_4  13    // PB13  traseiro
 // Livres apos unificar o trigger: D5, D7, D12
