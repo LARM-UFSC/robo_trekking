@@ -3,6 +3,7 @@ import time
 import os
 import sys
 import glob
+import argparse #visual, versao python de argc argv
 
 from ultralytics import YOLO
 from arduino.router_bridge import Bridge 
@@ -25,12 +26,6 @@ except Exception as e:
     print(f"Erro ao carregar o modelo: {e}")
     sys.exit()
 
-# ─────────── LOG DE DISTANCIAS (ultrassom do MCU) ───────────
-# O MCU chama "registra_distancias" a cada 200 ms via Bridge.notify. Aqui so
-# recebemos e gravamos: quem sobe o ia_trekking ja leva o log junto, sem
-# precisar de um segundo processo lendo a serial.
-#
-# Caminho absoluto a partir do arquivo, nao do cwd -- mesmo motivo do MODEL_PATH.
 ARQUIVO_DIST   = str(BASE_DIR / "distancias.txt")
 CABECALHO_DIST = "# hora;millis;frente_cm;direita_cm;esquerda_cm\n"
 
@@ -78,14 +73,6 @@ def abrirCamera():
     print(f"Camera aberta em /dev/video{indice} (symlink: {caminhos[0]})")
     return c
 
-
-# a camera entrega 30 FPS e a inferencia consome ~6. O V4L2 enfileira o excesso
-#e cap.read() devolve o ultimo frame  da fila entao o robo decide sobre uma
-#imagem de varias centenas de ms atras.
-# aqui descartamos a fila para ficar com o frame mais novo. O criterio e o tempo
-# do proprio grab: frame que ja estava na fila volta na hora, enquanto o primeiro
-# grab que precisa ESPERAR o sensor indica que chegamos na borda viva. Assim o
-# descarte se auto-ajusta e nao trava se a fila for curta ou o FPS cair.
 LIMITE_GRAB_MS = 5.0
 MAX_DESCARTES  = 8
 
@@ -155,6 +142,67 @@ def loop():
         print(f" Comando enviado: {comando} | FPS: {fps:.2f} ---")
         frame_count = 0
         start_time = time.time()
+
+
+#==========parte visual==========#
+'''
+parser = argparse.ArgumenParser()
+parse.add_argument('visual--', action='store_true', help='pra ver no navegador o que a camera ta vendo + printar distancias dos ultrassons')
+args = parser.parse_args()
+VISUAL = args.visual
+
+if VISUAL:
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import threading
+
+    frame_visual = None
+    lock_visual = threading.Lock()
+
+    class VisualHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path =='/video'
+                self.send_response(200)
+                self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
+                self.end.headers()
+                while True:
+                    which lock_visual:
+                        atual = frame_visual
+                    if atual is None:
+                        continue
+                    self.wfile.write(b'--frame\r\n')
+                    self.wfile.write(b'Content-Type: image/jpeg\r\n')
+                    self.wfile.write(f'Content-Length: {len(atual)}\r\n\r\n'.encode())
+                    self.wfile.write(atual)
+                    self.wfile.write(b'\r\n')
+        
+    def iniciar_servidor_visual():
+        HTTPServer(('0.0.0.0', 8000), VisualHandler).serve_forever()
+
+    threading.Thread(target=iniciar_servidor_visual, daemon=True).start()
+    print("modo visual ativado: http://192.168.1.194:8000/video") #ip pra internet do larm. pode mudar
+
+
+def AtualizarFrame(results, comando):
+    global frame_visual
+    anotado = results[0].plot()
+
+    try:
+        ultrassons = bridge.call("get_distancias")
+        d1, d2, d3 = (float(i) for i in ultrassons.plit(","))
+        texto_dist = f"s1:{d1: .0f}cm S2:{d2:.0f}cm S3:{d3:.0f}cm"
+    except Exception
+        texto_dist = "ha algo errado no print de distancias"
+
+    cv2.putText(anotado, texto_dist, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    cv2.putText(anotado, f"Cmd: {comando}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+    ok, buffer = cv2.imencode('.jpg', anotado)
+    if ok:
+        with lock_visual:
+            frame_visual = buffer.tobytes() 
+'''
+#==fim opcao visual==#
+
 
 if __name__ == "__main__":
     try:
