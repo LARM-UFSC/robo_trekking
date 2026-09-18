@@ -135,7 +135,11 @@ def loop():
     except Exception as e:
         print(f"Erro na chamada da Bridge: {e}")
 
+    if VISUAL:
+        AtualizarFrame(results, comando)   
+
     frame_count += 1
+    
     if frame_count >= 30:
         end_time = time.time()
         fps = 30 / (end_time - start_time)
@@ -145,9 +149,8 @@ def loop():
 
 
 #==========parte visual==========#
-'''
-parser = argparse.ArgumenParser()
-parse.add_argument('visual--', action='store_true', help='pra ver no navegador o que a camera ta vendo + printar distancias dos ultrassons')
+parser = argparse.ArgumentParser()
+parser.add_argument('--visual', action='store_true', help='pra ver no navegador o que a camera ta vendo + printar distancias dos ultrassons')
 args = parser.parse_args()
 VISUAL = args.visual
 
@@ -160,12 +163,12 @@ if VISUAL:
 
     class VisualHandler(BaseHTTPRequestHandler):
         def do_GET(self):
-            if self.path =='/video'
+            if self.path == '/video':
                 self.send_response(200)
                 self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
-                self.end.headers()
+                self.end_headers()
                 while True:
-                    which lock_visual:
+                    with lock_visual:
                         atual = frame_visual
                     if atual is None:
                         continue
@@ -174,12 +177,12 @@ if VISUAL:
                     self.wfile.write(f'Content-Length: {len(atual)}\r\n\r\n'.encode())
                     self.wfile.write(atual)
                     self.wfile.write(b'\r\n')
-        
+
     def iniciar_servidor_visual():
         HTTPServer(('0.0.0.0', 8000), VisualHandler).serve_forever()
 
     threading.Thread(target=iniciar_servidor_visual, daemon=True).start()
-    print("modo visual ativado: http://192.168.1.194:8000/video") #ip pra internet do larm. pode mudar
+    print("modo visual ativado: http://192.168.1.194:8000/video")
 
 
 def AtualizarFrame(results, comando):
@@ -188,9 +191,9 @@ def AtualizarFrame(results, comando):
 
     try:
         ultrassons = bridge.call("get_distancias")
-        d1, d2, d3 = (float(i) for i in ultrassons.plit(","))
-        texto_dist = f"s1:{d1: .0f}cm S2:{d2:.0f}cm S3:{d3:.0f}cm"
-    except Exception
+        d1, d2, d3 = (float(i) for i in ultrassons.split(","))
+        texto_dist = f"s1:{d1:.0f}cm S2:{d2:.0f}cm S3:{d3:.0f}cm"
+    except Exception as e:
         texto_dist = "ha algo errado no print de distancias"
 
     cv2.putText(anotado, texto_dist, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
@@ -199,8 +202,7 @@ def AtualizarFrame(results, comando):
     ok, buffer = cv2.imencode('.jpg', anotado)
     if ok:
         with lock_visual:
-            frame_visual = buffer.tobytes() 
-'''
+            frame_visual = buffer.tobytes()
 #==fim opcao visual==#
 
 
