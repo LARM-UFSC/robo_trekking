@@ -14,6 +14,7 @@
  *   motores.hpp    pinos, pontes H, tracao e esterco
  *   ultrassom.hpp  3 HC-SR04 com trigger unico   (gated por USAR_ULTRASSOM)
  *   desvio.hpp     desvio de obstaculo            (gated por USAR_ULTRASSOM)
+ *   manobra.hpp    retorno em U ao chegar no cone
  *   mpu.hpp        MPU6050 via I2C               (gated por USAR_MPU)
  *
  * As flags precisam ser definidas ANTES dos includes: os headers de sensor
@@ -28,6 +29,7 @@
 #include "motores.hpp"
 #include "ultrassom.hpp"
 #include "desvio.hpp"
+#include "manobra.hpp"
 #include "mpu.hpp"
 
 /* ─────────── PARAMETROS ─────────── */
@@ -44,6 +46,26 @@ const unsigned long INTERVALO_LOG_MS = 300;
  * o failsafe passa a disparar em regime normal e o robo anda aos trancos.
  */
 const unsigned long TIMEOUT_COMANDO_MS = 800;
+
+/* ─────────── MISSAO: chegar no cone ───────────
+ * O cone tambem e obstaculo para o ultrassom. Sem tratamento, o desvio contorna
+ * o cone a 50 cm e o robo nunca chega nele. Por isso ha um estado de
+ * aproximacao: com o cone A VISTA e perto, o desvio para de esterçar e o robo
+ * segue a camera ate a distancia de parada.
+ *
+ * O ultrassom nao distingue cone de parede. Se a camera estiver vendo um cone
+ * ao longe e houver uma parede perto, o robo vai ate a parede -- mas PARA nela,
+ * a PARADA_CONE_CM, e faz o U. Ou seja: erra o alvo, nao bate.
+ *
+ * AJUSTAR: DIST_APROXIMACAO_CM deve ser igual ou maior que DIST_DESVIO_CM,
+ * senao o desvio dispara antes da aproximacao assumir. */
+static const float DIST_APROXIMACAO_CM = 50.0f;
+static const float PARADA_CONE_CM      = 25.0f;
+
+// A camera so emite 'F', 'L' ou 'R' quando ha cone detectado; 'S' e "nao vejo".
+inline bool coneAVista(char cmd) {
+  return cmd == 'F' || cmd == 'L' || cmd == 'R';
+}
 
 // Periodo da linha de log das distancias. Nao adianta ser menor que o
 // INTERVALO_SONAR_MS (60 ms) do ultrassom: repetiria a mesma medicao.
@@ -88,7 +110,8 @@ void imprimirTelemetria() {
   Serial.print(" S3: ");   Serial.print(dist_3, 1);
 // Serial.print(" S4: ");   Serial.print(dist_4, 1);
 #endif
-  if (emDesvio()) Serial.print(" [DESVIO]");
+  if (retornoUAtivo()) Serial.print(" [U]");
+  if (emDesvio())      Serial.print(" [DESVIO]");
   Serial.println();
 }
 
@@ -164,8 +187,32 @@ void loop() {
   atualizarSonares();   // antes do desvio: ele decide com o dado deste ciclo
 #endif
 
-  // O ultrassom tem prioridade sobre a camera: obstaculo fisico ganha da visao.
-  aplicarComando(aplicarDesvio(cmdCamera));
+  /* Maquina de estados, em ordem de prioridade:
+   *   1. manobra em curso  -> nada interrompe o U
+   *   2. chegou no cone    -> para e inicia o U
+   *   3. aproximando       -> camera manda, desvio nao esterça (o cone e o alvo)
+   *   4. normal            -> ultrassom tem prioridade sobre a camera
+   */
+  char cmd;
+
+  if (retornoUAtivo()) {
+    cmd = passoRetornoU();
+    if (cmd == 0) cmd = 'S';                    // terminou neste ciclo
+  }
+#if USAR_ULTRASSOM
+  else if (coneAVista(cmdCamera) && dist_1 <= PARADA_CONE_CM) {
+    iniciarRetornoU();
+    cmd = 'S';
+  }
+  else if (coneAVista(cmdCamera) && dist_1 <= DIST_APROXIMACAO_CM) {
+    cmd = cmdCamera;
+  }
+#endif
+  else {
+    cmd = aplicarDesvio(cmdCamera);
+  }
+
+  aplicarComando(cmd);
 
   registrarDistancias();
 
