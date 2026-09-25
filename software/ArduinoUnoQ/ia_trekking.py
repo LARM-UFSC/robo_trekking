@@ -1,3 +1,7 @@
+# pendencias:
+#
+
+
 import cv2
 import time
 import os
@@ -28,12 +32,19 @@ except Exception as e:
 
 ARQUIVO_DIST   = str(BASE_DIR / "distancias.txt")
 CABECALHO_DIST = "# hora;millis;frente_cm;direita_cm;esquerda_cm\n"
-
+ultimas_distancias = {"frente": None, "direita": None, "esquerda": None}
 _arq_dist = None
+contornando = False
 
+#=======================================================================
 def registra_distancias(millis, frente, direita, esquerda):
     """Chamado pelo MCU. Uma linha por medicao do ultrassom."""
-    global _arq_dist
+    global _arq_dist, ultimas_distancias
+
+    ultimas_distancias["frente"] = frente
+    ultimas_distancias["direita"] = direita
+    ultimas_distancias["esquerda"] = esquerda
+
     if _arq_dist is None:
         # buffering=1: da para acompanhar o arquivo com o robo andando
         _arq_dist = open(ARQUIVO_DIST, "a", buffering=1, encoding="utf-8")
@@ -47,12 +58,11 @@ try:
     bridge.provide("registra_distancias", registra_distancias)
     print(f"Log de distancias ativo em {ARQUIVO_DIST}")
 except Exception as e:
-    # Log e acessorio: se a Bridge nao expuser provide, o robo anda sem ele.
-    # A linha DIST; continua saindo na serial como reserva.
-    print(f"Sem log de distancias pela Bridge: {e}")
+    print(f"Sem log de distancias pela bridge: {e}")
 
 CAM_GLOB = '/dev/v4l/by-id/*046d_0825*index0'
 
+#==================================================================
 def abrirCamera():
     caminhos = sorted(glob.glob(CAM_GLOB))
     if not caminhos:
@@ -88,8 +98,61 @@ def frameMaisRecente(c):
 cap = abrirCamera()
 falhas = 0
 
+#================================================
+
+def Vendo(results):
+    for r in results:
+        if r.boxes:
+            for box in r.boxes:
+                nome = model.names[int(box.cls[0])]
+
+                if nome == "cone":
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                    return y1, y2
+
+    return None
+
+#==============================================
+
+def CalcularDirecao(cx):
+    gradiente = int((cx - 320) * 255 / 320)
+
+    return max(-255, min(255, gradiente))   
+
+#===============================================
+
+def Perto(y1, y2):
+    alturaBbox =  y2 - y1
+
+    if alturaBbox >= 60:
+        return True
+    
+    return False
+
+#================================================
+
+def DecidirModo(results, contornando):
+    dados = Vendo(results)
+    
+    if dados is not None:
+        y1, y2 = dados
+        
+        if Perto(y1, y2):
+            contornando = True
+            return "contornar", contornando
+        else:
+            contornando = False
+            return "aproximar", contornando
+    else:
+        if contornando:
+            return "contornar", contornando
+        else:
+            return "procurar", contornando
+      
+
+#====================================loop=====================================#
 def loop():
-    global frame_count, start_time, cap, falhas
+    global frame_count, start_time, cap, falhas, contornando
 
     if cap is None:
         cap = abrirCamera()
@@ -111,44 +174,48 @@ def loop():
     falhas = 0
 
     results = model(frame, conf=0.8, imgsz=320, verbose=False)
-    comando = "S"
+    gradiente = 0
+    encontrou = False
+    modo, contornando = DecidirModo(results, contornando)
 
     for r in results:
-        if r.boxes:
-            box = r.boxes[0]
-            nome = model.names[int(box.cls[0])]
-            
-            if nome == 'cone':
-                x1, _, x2, _ = box.xyxy[0].cpu().numpy()
-                cx = int((x1 + x2) / 2)
-                
-                if cx < 260:
-                    comando = "L"
-                elif cx > 380:
-                    comando = "R"
-                else:
-                    comando = "F"
-                break 
+       if r.boxes:
+            for box in r.boxes:
+                nome = model.names[int(box.cls[0])]
+
+                if nome == "cone":
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+
+                    cx = (x1 + x2) / 2
+
+                    gradiente = CalcularDirecao(cx)
+                    encontrou = True
+                    break
+            if encontrou: #so pra corrigir o caso especifico de ser 0 no gradiente
+                break
 
     try:
-        bridge.call("processa_direcao", comando)
+        bridge.call("processa_direcao", gradiente, modo)
     except Exception as e:
-        print(f"Erro na chamada da Bridge: {e}")
+        print(f"Erro na chamada da Bridge: {e}")    
 
     if VISUAL:
-        AtualizarFrame(results, comando)   
+        AtualizarFrame(results, gradiente, modo)   
 
     frame_count += 1
     
     if frame_count >= 30:
         end_time = time.time()
         fps = 30 / (end_time - start_time)
-        print(f" Comando enviado: {comando} | FPS: {fps:.2f} ---")
+        print(f" Gradiente enviado: {gradiente} | Modo: {modo} | FPS: {fps:.2f} ---")
         frame_count = 0
         start_time = time.time()
+#====================================||==========================================#
 
 
 #==========parte visual==========#
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--visual', action='store_true', help='pra ver no navegador o que a camera ta vendo + printar distancias dos ultrassons')
 args = parser.parse_args()
@@ -171,12 +238,14 @@ if VISUAL:
                     with lock_visual:
                         atual = frame_visual
                     if atual is None:
+                        time.sleep(0.01)
                         continue
                     self.wfile.write(b'--frame\r\n')
                     self.wfile.write(b'Content-Type: image/jpeg\r\n')
                     self.wfile.write(f'Content-Length: {len(atual)}\r\n\r\n'.encode())
                     self.wfile.write(atual)
                     self.wfile.write(b'\r\n')
+                    time.sleep(0.03)
 
     def iniciar_servidor_visual():
         HTTPServer(('0.0.0.0', 8000), VisualHandler).serve_forever()
@@ -185,25 +254,27 @@ if VISUAL:
     print("modo visual ativado: http://192.168.1.194:8000/video")
 
 
-def AtualizarFrame(results, comando):
+def AtualizarFrame(results, gradiente, modo):
     global frame_visual
     anotado = results[0].plot()
 
-    try:
-        ultrassons = bridge.call("get_distancias")
-        d1, d2, d3 = (float(i) for i in ultrassons.split(","))
-        texto_dist = f"s1:{d1:.0f}cm S2:{d2:.0f}cm S3:{d3:.0f}cm"
-    except Exception as e:
-        texto_dist = "ha algo errado no print de distancias"
+    d = ultimas_distancias
+    if d["frente"] is not None:
+        texto_dist = f"F:{d['frente']:.0f}cm D:{d['direita']:.0f}cm E:{d['esquerda']:.0f}cm"
+    else:
+        texto_dist = "aguardando distancias"
 
-    cv2.putText(anotado, texto_dist, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-    cv2.putText(anotado, f"Cmd: {comando}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    cv2.putText(anotado, texto_dist, (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+    cv2.putText(anotado, f"Gradiente: {gradiente} | Modo: {modo}", (10, 60),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
     ok, buffer = cv2.imencode('.jpg', anotado)
     if ok:
         with lock_visual:
             frame_visual = buffer.tobytes()
-#==fim opcao visual==#
+#===============fim opcao visual=================#
 
 
 if __name__ == "__main__":
@@ -213,7 +284,7 @@ if __name__ == "__main__":
             time.sleep(0.01)
     except KeyboardInterrupt:
         try:
-            bridge.call("processa_direcao", "S")
+            bridge.call("processa_direcao", 0, "procurar")
         except:
             pass
         if cap is not None:
