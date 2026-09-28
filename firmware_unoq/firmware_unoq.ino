@@ -40,6 +40,7 @@
 #include "desvioFuzzy.hpp"
 #include "manobra.hpp"
 #include "mpu.hpp"
+#include "desenharLed.hpp"
 
 /* ─────────── PARAMETROS ─────────── */
 const unsigned long INTERVALO_LOG_MS = 300;
@@ -252,6 +253,7 @@ void setup() {
 #if USAR_MPU
   inicializarMPU();
 #endif
+  inicializarLedModo();
 }
 
 void loop() {
@@ -329,5 +331,6 @@ void loop() {
 #if USAR_MPU
   lerMPU();
 #endif
+  atualizarLedModo(fresco, modoCamera);
   imprimirTelemetria();
 }
