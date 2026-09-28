@@ -54,11 +54,7 @@ def registra_distancias(millis, frente, direita, esquerda):
     hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     _arq_dist.write(f"{hora};{millis};{frente:.1f};{direita:.1f};{esquerda:.1f}\n")
 
-try:
-    bridge.provide("registra_distancias", registra_distancias)
-    print(f"Log de distancias ativo em {ARQUIVO_DIST}")
-except Exception as e:
-    print(f"Sem log de distancias pela bridge: {e}")
+
 
 CAM_GLOB = '/dev/v4l/by-id/*046d_0825*index0'
 

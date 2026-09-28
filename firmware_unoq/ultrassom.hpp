@@ -5,18 +5,10 @@
  * 3 sensores HC-SR04 na frente, com TRIGGER unico compartilhado.
  * O 4o (traseiro) esta reservado, ainda nao ligado.
  *
- * Header-only, ativado por USAR_ULTRASSOM. A flag e definida no
- * firmware_unoq.ino ANTES deste include -- com ela em 0, este arquivo nao
- * gera codigo nenhum.
+ * Header-only, incluido apenas pelo firmware_unoq.ino.
  */
 
 #include <Arduino.h>
-
-#ifndef USAR_ULTRASSOM
-  #error "Defina USAR_ULTRASSOM antes de incluir ultrassom.hpp"
-#endif
-
-#if USAR_ULTRASSOM
 
 // 3 sensores na frente, 1 atras. TRIGGER unico, comum a todos.
 #define PIN_TRIGGER 2    // PB3   disparo compartilhado
@@ -105,5 +97,4 @@ inline void atualizarSonares() {
 // dist_4 = pronto[3] ? usParaCm(largura[3]) : INVALID_DISTANCE;
 }
 
-#endif  // USAR_ULTRASSOM
 #endif  // ULTRASSOM_HPP
