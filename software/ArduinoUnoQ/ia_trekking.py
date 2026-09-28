@@ -12,7 +12,6 @@ import argparse #visual, versao python de argc argv
 from ultralytics import YOLO
 from arduino.router_bridge import Bridge 
 from pathlib import Path
-from datetime import datetime
 
 bridge = Bridge()
 bridge.connect(timeout=5)
@@ -30,29 +29,19 @@ except Exception as e:
     print(f"Erro ao carregar o modelo: {e}")
     sys.exit()
 
-ARQUIVO_DIST   = str(BASE_DIR / "distancias.txt")
-CABECALHO_DIST = "# hora;millis;frente_cm;direita_cm;esquerda_cm\n"
 ultimas_distancias = {"frente": None, "direita": None, "esquerda": None}
-_arq_dist = None
 contornando = False
 
 #=======================================================================
 def registra_distancias(millis, frente, direita, esquerda):
-    """Chamado pelo MCU. Uma linha por medicao do ultrassom."""
-    global _arq_dist, ultimas_distancias
+    """Chamado pelo MCU a cada medicao. Guarda so a ultima leitura, usada pelo
+    overlay do modo visual. A gravacao em distancias.txt foi removida: a
+    caracterizacao dos sensores ja estava feita e o arquivo so crescia."""
+    global ultimas_distancias
 
     ultimas_distancias["frente"] = frente
     ultimas_distancias["direita"] = direita
     ultimas_distancias["esquerda"] = esquerda
-
-    if _arq_dist is None:
-        # buffering=1: da para acompanhar o arquivo com o robo andando
-        _arq_dist = open(ARQUIVO_DIST, "a", buffering=1, encoding="utf-8")
-        if _arq_dist.tell() == 0:
-            _arq_dist.write(CABECALHO_DIST)
-
-    hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    _arq_dist.write(f"{hora};{millis};{frente:.1f};{direita:.1f};{esquerda:.1f}\n")
 
 
 
@@ -285,5 +274,3 @@ if __name__ == "__main__":
             pass
         if cap is not None:
             cap.release()
-        if _arq_dist is not None:
-            _arq_dist.close()
