@@ -1,20 +1,19 @@
 /**
  * Firmware do MCU do Arduino Uno Q (STM32U585 / Zephyr).
  *
- * Recebe o comando de direcao da CPU Linux pela Bridge e aciona os motores.
- * Ultrassom e MPU6050 sao opcionais: se nao compilarem, desligue pelas
- * flags abaixo e o robo continua andando.
- *
+ * Recebe da CPU Linux, pela Bridge, a posicao do cone (gradiente) e o modo de
+ * operacao, e aciona os dois motores: tracao e direcao.
  *
  * Organizacao (headers-only, todos incluidos so por este arquivo):
- *   motores.hpp    pinos, pontes H, tracao e esterco
- *   ultrassom.hpp  3 HC-SR04 com trigger unico
+ *   motores.hpp     pinos, pontes H, tracao e esterco
+ *   ultrassom.hpp   3 HC-SR04 com trigger unico
  *   desvioFuzzy.hpp base de regras fuzzy do desvio e do seguimento do cone
- *   manobra.hpp    (vazio: a reescrever)
- *   mpu.hpp        MPU6050 via I2C               (gated por USAR_MPU)
+ *   manobra.hpp     (vazio: a reescrever)
+ *   mpu.hpp         MPU6050 via I2C   (gated por USAR_MPU)
+ *   desenharLed.hpp indicacao do modo no LED
  *
- * As flags precisam ser definidas ANTES dos includes: os headers de sensor
- * dependem delas para decidir se geram codigo.
+ * USAR_MPU e a unica flag de compilacao que resta, e precisa ser definida ANTES
+ * dos includes: o mpu.hpp depende dela para decidir se gera codigo.
  */
 
 #define USAR_MPU       0   // desligada por enquanto
@@ -35,14 +34,40 @@ const unsigned long INTERVALO_LOG_MS = 300;
  * Failsafe: tempo maximo sem comando novo antes de assumir que o link caiu.
  *
  * AJUSTAR: use 3-5x o periodo entre comandos. O FPS sai no log do ia_trekking a
- * cada 30 frames; 800 ms cobre ate ~4 FPS. Se a visao ficar mais lenta que isso,
- * o failsafe passa a disparar em regime normal e o robo anda aos trancos.
+ * cada 30 frames. Medido em 2026-09-25: ~5 FPS, periodo de 200 ms, e os 700 ms
+ * abaixo dao 3,5x -- dentro da faixa, mas na ponta apertada. Se a visao ficar
+ * mais lenta que 4 FPS, o failsafe passa a disparar em regime normal e o robo
+ * anda aos trancos.
  */
 const unsigned long TIMEOUT_COMANDO_MS = 700;
 
-// Periodo da linha de log das distancias. Nao adianta ser menor que o
+// Periodo de envio das distancias ao lado Linux. Nao adianta ser menor que o
 // INTERVALO_SONAR_MS (60 ms) do ultrassom: repetiria a mesma medicao.
 const unsigned long INTERVALO_DIST_MS = 200;
+
+/* ─────────── BUSCA EM CIRCULO ───────────
+ * Comportamento provisorio. Tres estados exclusivos no loop():
+ *
+ *   sem cone (modo 'p')          -> gira em circulo procurando
+ *   cone centralizado            -> PARA
+ *   cone visivel mas fora da     -> fuzzy assume (segue o cone e desvia)
+ *   janela central
+ *
+ * AJUSTAR: a janela de +-50 no gradiente e chute confesso. O gradiente e
+ * (cx - 320) * 255/320, entao 50 equivale a ~63 px num quadro de 640 -- cerca
+ * de 10% da largura para cada lado do centro. Alargue se o robo ficar oscilando
+ * sem nunca considerar centralizado; estreite se ele parar com o cone
+ * visivelmente de lado.
+ */
+static const int JANELA_CENTRADO = 50;
+
+/* AJUSTAR NA BANCADA: duty de tracao durante a busca. Tem que ser suficiente
+ * para o robo descrever o circulo sem arrastar, e baixo o bastante para ele nao
+ * sair de perto do cone quando passar por ele. */
+static const int VEL_BUSCA = 170;
+
+// Lado do circulo. +255 e esquerda (PIN_ESQ), -255 e direita.
+static const int DIR_BUSCA = 255;
 
 /* ─────────── ESTADO ─────────── */
 volatile unsigned long ultimoComandoMs = 0;
@@ -64,9 +89,9 @@ static int ultimaDir = 0;
 
 /* ═══════════ BRIDGE (CPU Linux -> MCU) ═══════════ */
 
-// Mesma assinatura do bridgemcu.ino, que ja funciona nesta placa.
-// Roda em contexto proprio (thread "bridge" do Zephyr), por isso o estado
-// compartilhado e volatile.
+/* Protocolo de dois argumentos, diferente do bridgemcu.ino original (que
+ * recebia uma String com uma letra). Roda em contexto proprio (thread "bridge"
+ * do Zephyr), por isso o estado compartilhado e volatile. */
 void processa_direcao(int gradiente, String modo) {
   gradienteCone = constrain(gradiente, -255, 255);
   modoCamera    = (modo.length() > 0) ? modo.charAt(0) : '?';
@@ -75,10 +100,24 @@ void processa_direcao(int gradiente, String modo) {
   recebeuComando  = true;
 }
 
-// Comando so vale enquanto for recente. Sem isto o robo segue o ultimo byte
-// para sempre depois que o link cai.
+// Comando so vale enquanto for recente. Sem isto o robo segue o ultimo
+// gradiente para sempre depois que o link cai.
 bool comandoEstaFresco() {
   return recebeuComando && (millis() - ultimoComandoMs) < TIMEOUT_COMANDO_MS;
+}
+
+/* ═══════════ ESTADO DA BUSCA ═══════════ */
+
+/* Cone centralizado exige a camera VENDO o cone, nao so gradiente pequeno: em
+ * "procurar" o ia_trekking manda gradiente 0, que cairia na janela e faria o
+ * robo parar justamente quando nao ha cone nenhum. */
+bool coneCentralizado() {
+  const int g = gradienteCone;
+  return modoCamera != 'p' && g >= -JANELA_CENTRADO && g <= JANELA_CENTRADO;
+}
+
+bool procurandoCone() {
+  return modoCamera == 'p';
 }
 
 /* ═══════════ TELEMETRIA ═══════════ */
@@ -105,16 +144,16 @@ void imprimirTelemetria() {
   Serial.println();
 }
 
-/* ═══════════ LOG DE DISTANCIAS ═══════════ */
+/* ═══════════ ENVIO DAS DISTANCIAS ═══════════ */
 
 /*
- * Linha de formato fixo para ser lida por script, separada da telemetria
- * humana pelo prefixo DIST;. Campos:
+ * Entrega as distancias ao lado Linux. Isto JA NAO E LOG: a gravacao em
+ * distancias.txt foi removida depois que a caracterizacao dos sensores ficou
+ * pronta. Hoje o consumidor e o overlay do modo visual, que escreve
+ * "F:.. D:.. E:.." por cima do video.
  *
- *   DIST;<millis>;<frente>;<direita>;<esquerda>
- *
- * O MCU nao tem sistema de arquivos util, entao quem grava o .txt e o
- * ia_trekking.py do lado Linux, pelo callback registra_distancias.
+ * A linha DIST; na serial sobrou do tempo do log por pipe e nao tem mais
+ * consumidor automatico -- serve so para leitura humana no monitor.
  */
 
 void registrarDistancias() {
@@ -208,22 +247,35 @@ void loop() {
   atualizarSonares();   // antes do fuzzy: ele decide com o dado deste ciclo
 
 
-  /* O fuzzy decide so pelos ultrassonicos. O comando da camera nao entra na
-   * conta -- mas 'fresco' continua valendo como chave geral: sem ninguem
-   * mandando comando pela Bridge, o robo fica parado. E o botao de emergencia
-   * do teste, e o conteudo do byte e irrelevante, so a chegada dele. */
+  /* 'fresco' e a chave geral: sem ninguem mandando comando pela Bridge, o robo
+   * fica parado. Serve de botao de emergencia -- matar o ia_trekking para o
+   * robo em menos de um segundo. */
   int vel = 0, dir = 0;
 
   if (fresco) {
-    // 999 (eco perdido) esta fora do universo 0-400: entra como "livre".
-    fuzzy->setInput(1, dist_2 >= INVALID_DISTANCE ? 400.0f : dist_2);  // direita
-    fuzzy->setInput(2, dist_3 >= INVALID_DISTANCE ? 400.0f : dist_3);  // esquerda
-    fuzzy->setInput(3, dist_1 >= INVALID_DISTANCE ? 400.0f : dist_1);  // frente
-    fuzzy->setInput(4, (float)gradienteCone);                          // cone
-    fuzzy->fuzzify();
+    if (coneCentralizado()) {
+      // Achou e esta de frente. Comportamento provisorio: para aqui.
+      vel = 0;
+      dir = 0;
+    }
+    else if (procurandoCone()) {
+      // Camera nao ve cone nenhum: gira em circulo ate aparecer.
+      vel = VEL_BUSCA;
+      dir = DIR_BUSCA;
+    }
+    else {
+      /* Cone a vista mas fora da janela: o fuzzy assume, usando as tres
+       * distancias e o gradiente. 999 (eco perdido) esta fora do universo
+       * 0-400 e entra como "livre". */
+      fuzzy->setInput(1, dist_2 >= INVALID_DISTANCE ? 400.0f : dist_2);  // direita
+      fuzzy->setInput(2, dist_3 >= INVALID_DISTANCE ? 400.0f : dist_3);  // esquerda
+      fuzzy->setInput(3, dist_1 >= INVALID_DISTANCE ? 400.0f : dist_1);  // frente
+      fuzzy->setInput(4, (float)gradienteCone);                          // cone
+      fuzzy->fuzzify();
 
-    vel = (int)fuzzy->defuzzify(1);   // FuzzyOutput(1) = velocidade
-    dir = (int)fuzzy->defuzzify(2);   // FuzzyOutput(2) = direcao, + = esquerda
+      vel = (int)fuzzy->defuzzify(1);   // FuzzyOutput(1) = velocidade
+      dir = (int)fuzzy->defuzzify(2);   // FuzzyOutput(2) = direcao, + = esquerda
+    }
   }
 
   ultimaVel = vel;

@@ -124,6 +124,7 @@ void inicializarFuzzy()
     addRegraCone(13, longeFr, coneEsq,    esqSuave);
     addRegraCone(14, longeFr, coneCentro, centro);
     addRegraCone(15, longeFr, coneDir,    dirSuave);
+    
 }
 
 //template para as regras de fuzzy
