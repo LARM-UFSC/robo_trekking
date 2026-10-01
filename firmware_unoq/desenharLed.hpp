@@ -58,7 +58,7 @@ static void desenharMatriz(const char* const* d) {
 
 inline void inicializarLedModo() {
   matrizModo.begin();
-  desenharMatriz(DES_SEM_LINK);
+  desenharMatriz(NAO_DESENHAR);
 }
 
 inline void atualizarLedModo(bool fresco, char modo) {
