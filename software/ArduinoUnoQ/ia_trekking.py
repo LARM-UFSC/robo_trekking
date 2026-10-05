@@ -29,21 +29,7 @@ except Exception as e:
     print(f"Erro ao carregar o modelo: {e}")
     sys.exit()
 
-ultimas_distancias = {"frente": None, "direita": None, "esquerda": None}
 contornando = False
-
-#=======================================================================
-def registra_distancias(millis, frente, direita, esquerda):
-    """Chamado pelo MCU a cada medicao. Guarda so a ultima leitura, usada pelo
-    overlay do modo visual. A gravacao em distancias.txt foi removida: a
-    caracterizacao dos sensores ja estava feita e o arquivo so crescia."""
-    global ultimas_distancias
-
-    ultimas_distancias["frente"] = frente
-    ultimas_distancias["direita"] = direita
-    ultimas_distancias["esquerda"] = esquerda
-
-
 
 CAM_GLOB = '/dev/v4l/by-id/*046d_0825*index0'
 
@@ -243,16 +229,7 @@ def AtualizarFrame(results, gradiente, modo):
     global frame_visual
     anotado = results[0].plot()
 
-    d = ultimas_distancias
-    if d["frente"] is not None:
-        texto_dist = f"F:{d['frente']:.0f}cm D:{d['direita']:.0f}cm E:{d['esquerda']:.0f}cm"
-    else:
-        texto_dist = "aguardando distancias"
-
-    cv2.putText(anotado, texto_dist, (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-
-    cv2.putText(anotado, f"Gradiente: {gradiente} | Modo: {modo}", (10, 60),
+    cv2.putText(anotado, f"Gradiente: {gradiente} | Modo: {modo}", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
     ok, buffer = cv2.imencode('.jpg', anotado)

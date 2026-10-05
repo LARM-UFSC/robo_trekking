@@ -28,7 +28,6 @@
 #include "desenharLed.hpp"
 
 /* ─────────── PARAMETROS ─────────── */
-const unsigned long INTERVALO_LOG_MS = 300;
 
 /*
  * Failsafe: tempo maximo sem comando novo antes de assumir que o link caiu.
@@ -40,10 +39,6 @@ const unsigned long INTERVALO_LOG_MS = 300;
  * anda aos trancos.
  */
 const unsigned long TIMEOUT_COMANDO_MS = 700;
-
-// Periodo de envio das distancias ao lado Linux. Nao adianta ser menor que o
-// INTERVALO_SONAR_MS (60 ms) do ultrassom: repetiria a mesma medicao.
-const unsigned long INTERVALO_DIST_MS = 200;
 
 /* ─────────── BUSCA EM CIRCULO ───────────
  * Comportamento provisorio. Tres estados exclusivos no loop():
@@ -80,12 +75,6 @@ volatile int  gradienteCone = 0;
 volatile char modoCamera    = '?';   // 'a', 'c', 'p'
 
 
-// Ultima saida efetivamente aplicada. A telemetria imprime isto em vez de
-// chamar defuzzify() de novo: sem link, o fuzzify() nao roda no ciclo e a
-// composicao ficaria velha.
-static int ultimaVel = 0;
-static int ultimaDir = 0;
-
 
 /* ═══════════ BRIDGE (CPU Linux -> MCU) ═══════════ */
 
@@ -108,9 +97,12 @@ bool comandoEstaFresco() {
 
 /* ═══════════ ESTADO DA BUSCA ═══════════ */
 
-/* Cone centralizado exige a camera VENDO o cone, nao so gradiente pequeno: em
- * "procurar" o ia_trekking manda gradiente 0, que cairia na janela e faria o
- * robo parar justamente quando nao ha cone nenhum. */
+/* Cone centralizado. SEM USO no momento -- fica disponivel para a trava de
+ * "chegou no cone", que deve combinar isto com o ultrassom.
+ *
+ * Exige a camera VENDO o cone, nao so gradiente pequeno: em "procurar" o
+ * ia_trekking manda gradiente 0, que cairia na janela e indicaria cone
+ * centralizado justamente quando nao ha cone nenhum. */
 bool coneCentralizado() {
   const int g = gradienteCone;
   return modoCamera != 'p' && g >= -JANELA_CENTRADO && g <= JANELA_CENTRADO;
@@ -119,66 +111,6 @@ bool coneCentralizado() {
 bool procurandoCone() {
   return modoCamera == 'p';
 }
-
-/* ═══════════ TELEMETRIA ═══════════ */
-
-void imprimirTelemetria() {
-  static unsigned long ultimo = 0;
-  if (millis() - ultimo < INTERVALO_LOG_MS) return;
-  ultimo = millis();
-
-  Serial.print("Camera: ");
-  Serial.print(gradienteCone);
-  Serial.print(' ');
-  Serial.print((char)modoCamera);
-
-  Serial.print(" | S1: "); Serial.print(dist_1, 1);
-  Serial.print(" S2: ");   Serial.print(dist_2, 1);
-  Serial.print(" S3: ");   Serial.print(dist_3, 1);
-// Serial.print(" S4: ");   Serial.print(dist_4, 1);
-
-
-  Serial.print(" | dir: "); Serial.print(ultimaDir);
-  Serial.print(" vel: ");   Serial.print(ultimaVel);
-
-  Serial.println();
-}
-
-/* ═══════════ ENVIO DAS DISTANCIAS ═══════════ */
-
-/*
- * Entrega as distancias ao lado Linux. Isto JA NAO E LOG: a gravacao em
- * distancias.txt foi removida depois que a caracterizacao dos sensores ficou
- * pronta. Hoje o consumidor e o overlay do modo visual, que escreve
- * "F:.. D:.. E:.." por cima do video.
- *
- * A linha DIST; na serial sobrou do tempo do log por pipe e nao tem mais
- * consumidor automatico -- serve so para leitura humana no monitor.
- */
-
-void registrarDistancias() {
-  static unsigned long ultimo = 0;
-  if (millis() - ultimo < INTERVALO_DIST_MS) return;
-  const unsigned long agora = millis();
-  ultimo = agora;
-
-  /* Caminho principal: entrega ao lado Linux, que grava o .txt de dentro do
-   * ia_trekking.py. notify() e "dispare e esqueca" -- se ninguem do outro lado
-   * tiver registrado o metodo, a chamada nao bloqueia nem da erro, o robo segue.
-   *
-   * NAO chamar isto de dentro de um callback RPC (processa_direcao): a propria
-   * biblioteca avisa que call/notify dentro de callback trava a IPC. Aqui
-   * estamos no loop(), que e seguro. */
-  Bridge.notify("registra_distancias", agora, dist_1, dist_2, dist_3);
-
-  /* Caminho reserva: a mesma linha na serial, para leitura humana no monitor. */
-  Serial.print("DIST;");
-  Serial.print(agora);      Serial.print(';');
-  Serial.print(dist_1, 1);  Serial.print(';');
-  Serial.print(dist_2, 1);  Serial.print(';');
-  Serial.println(dist_3, 1);
-}
-
 
 /* ═══════════ ESTERCO CONTINUO ═══════════ */
 
@@ -253,20 +185,17 @@ void loop() {
   int vel = 0, dir = 0;
 
   if (fresco) {
-    if (coneCentralizado()) {
-      // Achou e esta de frente. Comportamento provisorio: para aqui.
-      vel = 0;
-      dir = 0;
-    }
-    else if (procurandoCone()) {
+    if (procurandoCone()) {
       // Camera nao ve cone nenhum: gira em circulo ate aparecer.
       vel = VEL_BUSCA;
       dir = DIR_BUSCA;
     }
     else {
-      /* Cone a vista mas fora da janela: o fuzzy assume, usando as tres
-       * distancias e o gradiente. 999 (eco perdido) esta fora do universo
-       * 0-400 e entra como "livre". */
+      /* Cone a vista: o fuzzy assume, usando as tres distancias e o gradiente.
+       * Vale inclusive com o cone centralizado -- nesse caso a regra 14 devolve
+       * direcao 'centro' e as regras de distancia dao a velocidade, ou seja, ele
+       * segue em frente. 999 (eco perdido) esta fora do universo 0-400 e entra
+       * como "livre". */
       fuzzy->setInput(1, dist_2 >= INVALID_DISTANCE ? 400.0f : dist_2);  // direita
       fuzzy->setInput(2, dist_3 >= INVALID_DISTANCE ? 400.0f : dist_3);  // esquerda
       fuzzy->setInput(3, dist_1 >= INVALID_DISTANCE ? 400.0f : dist_1);  // frente
@@ -278,16 +207,11 @@ void loop() {
     }
   }
 
-  ultimaVel = vel;
-  ultimaDir = dir;
-
   acionarPonte(PIN_FR, PIN_TR, vel);
   aplicarEstercoFuzzy(dir);
 
 
 
-
-  registrarDistancias();
 
   // LED aceso = recebendo comando. Diagnostico de bancada sem serial.
   digitalWrite(LED_BUILTIN, fresco ? HIGH : LOW);
@@ -295,5 +219,4 @@ void loop() {
   lerMPU();
 #endif
   atualizarLedModo(fresco, modoCamera);
-  imprimirTelemetria();
 }
