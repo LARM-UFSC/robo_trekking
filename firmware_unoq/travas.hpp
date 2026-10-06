@@ -4,7 +4,7 @@
 /**
  * Travas de seguranca: a ultima palavra sobre o que chega aos motores.
  *
- * ESQUELETO -- a implementar.
+ * Implementado em 2026-10-06: frontal critico e cercado.
  *
  * Roda DEPOIS do modo produzir vel/dir e ANTES do acionamento. E o unico ponto
  * do firmware capaz de zerar os motores, de proposito: quando o robo parar sem
@@ -62,26 +62,86 @@ static const float CRITICO_CM = 15.0f;
 /* AJUSTAR: cercado -- os tres sensores abaixo deste valor. */
 static const float CERCADO_CM = 30.0f;
 
-// Histerese: so volta a andar quando a folga passar disto.
+// Histerese: so volta a andar quando algum lado abrir mais que isto.
 static const float CERCADO_LIVRE_CM = 45.0f;
+
+/* Medicoes seguidas para declarar cercado. Nao se aplica a trava critica, que
+ * reage no mesmo ciclo -- ver o comentario dela. */
+static const int CONFIRMACOES_CERCADO = 2;
 
 /* ═══════════ SERVIDO AO .ino ═══════════ */
 
 /*
  * Aplica as travas sobre a saida do modo. Pode reduzir, nunca aumentar.
  *
- * A implementar:
- *   1. frontal critico -- dist_1 < CRITICO_CM, SO quando vel > 0
- *   2. cercado         -- os tres abaixo de CERCADO_CM, com histerese e
- *                         debounce por medicao
- *
- * A trava de link caido nao esta aqui: ela e resolvida no .ino, que ja nao
- * chama modo nenhum quando o comando esta velho.
+ * A trava de link caido nao esta aqui: ela e resolvida no .ino, que simplesmente
+ * nao chama modo nenhum quando o comando esta velho.
  */
 inline void aplicarTravas(int &vel, int &dir) {
-  // a implementar -- hoje nao altera nada, igual ao comportamento atual
-  (void)vel;
-  (void)dir;
+
+  /* ─── 1. FRONTAL CRITICO ───
+   * Ultimo recurso, so contra o avanco. Sem debounce de proposito: e a guarda
+   * final contra colisao, e atrasar a reacao em duas medicoes (120 ms) para
+   * filtrar ruido custa mais do que o falso positivo, que gasta um ciclo
+   * parado e se resolve sozinho no proximo.
+   *
+   * 999 (eco perdido) nao e menor que o limiar, entao sensor sem eco nao
+   * dispara trava -- mesma escolha documentada no ultrassom.hpp. */
+  if (vel > 0 && dist_1 < CRITICO_CM) vel = 0;
+
+  /* ─── 2. CERCADO ───
+   * Os tres sensores bloqueados: nao ha lado bom e seguir em frente so raspa.
+   *
+   * Debounce POR MEDICAO, nao por iteracao: o loop() roda muito mais rapido
+   * que INTERVALO_SONAR_MS, e um contador por volta saturaria sobre a mesma
+   * leitura sem filtrar nada.
+   *
+   * Histerese assimetrica: tranca com os tres abaixo de CERCADO_CM, solta
+   * quando ALGUM passar de CERCADO_LIVRE_CM. Soltar exige apenas uma saida,
+   * porque uma saida basta para escapar.
+   *
+   * Leitura invalida conta como livre, entao sensor falhando impede a trava de
+   * trancar. Falha para o lado de seguir andando -- consistente com o resto do
+   * firmware, e registrado como escolha, nao descuido. */
+  static unsigned long ultimaMedicao = 0;
+  static bool cercado  = false;
+  static int  confirma = 0;
+
+  if (houveMedicaoNova(ultimaMedicao)) {
+    if (cercado) {
+      const bool algumAbriu = dist_1 > CERCADO_LIVRE_CM
+                           || dist_2 > CERCADO_LIVRE_CM
+                           || dist_3 > CERCADO_LIVRE_CM;
+      if (algumAbriu) { cercado = false; confirma = 0; }
+    }
+    else {
+      const bool tresBloqueados = dist_1 < CERCADO_CM
+                               && dist_2 < CERCADO_CM
+                               && dist_3 < CERCADO_CM;
+      if (tresBloqueados) {
+        if (++confirma >= CONFIRMACOES_CERCADO) cercado = true;
+      } else {
+        confirma = 0;
+      }
+    }
+  }
+
+  /* So o avanco, igual a trava critica. Bloquear a re tambem deixaria o robo
+   * morto no canto: a busca entra em re justamente porque a frente esta
+   * fechada, e uma trava cega a direcao anularia a unica saida que existe.
+   *
+   * A contrapartida e que a fuga e as cegas enquanto o ECHO_4 nao estiver
+   * ligado -- limitada pelo teto de tempo da re, em busca.hpp. Quando o
+   * traseiro entrar, vale o espelho: if (vel < 0 && dist_4 < CRITICO_CM). */
+  if (cercado && vel > 0) vel = 0;
+
+  /* ─── 3. PARADO NAO PRECISA DE ESTERCO ───
+   * Com vel em zero o esterco nao desloca nada, e segurar o angulo contra a
+   * mola e exatamente o caso que esquenta o motor. Soltar aqui e reducao, nao
+   * mudanca de direcao, entao respeita o invariante.
+   *
+   * Nao vale para vel < 0: a re da busca depende do contra-esterco. */
+  if (vel == 0) dir = 0;
 }
 
 #endif  // TRAVAS_HPP

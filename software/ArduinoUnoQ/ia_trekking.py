@@ -31,25 +31,6 @@ except Exception as e:
 
 contornando = False
 
-<<<<<<< HEAD
-=======
-#=======================================================================
-def registra_distancias(millis, frente, direita, esquerda):
-    """Chamado pelo MCU a cada medicao. Guarda so a ultima leitura, usada pelo
-    overlay do modo visual. A gravacao em distancias.txt foi removida: a
-    caracterizacao dos sensores ja estava feita e o arquivo so crescia."""
-    global ultimas_distancias
-
-    ultimas_distancias["frente"] = frente
-    ultimas_distancias["direita"] = direita
-    ultimas_distancias["esquerda"] = esquerda
-
-try:
-    bridge.provide("registra_distancias", registra_distancias)
-except Exception as e:
-    print(f"Sem distancias pela bridge: {e}")
-
->>>>>>> ea1e28e (.)
 CAM_GLOB = '/dev/v4l/by-id/*046d_0825*index0'
 
 #==================================================================
