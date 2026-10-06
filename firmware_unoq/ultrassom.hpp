@@ -13,8 +13,8 @@
 // 3 sensores na frente, 1 atras. TRIGGER unico, comum a todos.
 #define PIN_TRIGGER 2    // PB3   disparo compartilhado
 #define ECHO_1      4    // PA12  frente
-#define ECHO_2      6    // PB1   esquerda
-#define ECHO_3      8    // PB4   direita
+#define ECHO_2      6    // PB1   direita
+#define ECHO_3      8    // PB4   esquerda
 // Sensor 4 (traseiro) desativado por enquanto. Pino reservado.
 // #define ECHO_4  13    // PB13  traseiro
 // Livres apos unificar o trigger: D5, D7, D12
@@ -24,9 +24,22 @@
 
 static const unsigned long INTERVALO_SONAR_MS = 60;
 
+/* Incrementa a cada medicao concluida. Quem precisa de debounce compara com o
+ * ultimo valor visto: o loop() roda muito mais rapido que INTERVALO_SONAR_MS, e
+ * um contador incrementado por iteracao saturaria sobre a MESMA leitura. */
+static unsigned long ciclosSonar = 0;
+
 static float dist_1 = INVALID_DISTANCE, dist_2 = INVALID_DISTANCE;
 static float dist_3 = INVALID_DISTANCE;
 // static float dist_4 = INVALID_DISTANCE;   // traseiro
+
+/* true uma unica vez por medicao. Cada chamador guarda o proprio marcador, por
+ * isso o parametro -- dois consumidores nao se atropelam. */
+inline bool houveMedicaoNova(unsigned long &ultimoVisto) {
+  if (ciclosSonar == ultimoVisto) return false;
+  ultimoVisto = ciclosSonar;
+  return true;
+}
 
 inline void inicializarSonares() {
   pinMode(PIN_TRIGGER, OUTPUT);
@@ -94,6 +107,8 @@ inline void atualizarSonares() {
   dist_1 = pronto[0] ? usParaCm(largura[0]) : INVALID_DISTANCE;
   dist_2 = pronto[1] ? usParaCm(largura[1]) : INVALID_DISTANCE;
   dist_3 = pronto[2] ? usParaCm(largura[2]) : INVALID_DISTANCE;
+
+  ciclosSonar++;
 // dist_4 = pronto[3] ? usParaCm(largura[3]) : INVALID_DISTANCE;
 }
 

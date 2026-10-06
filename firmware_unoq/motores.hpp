@@ -103,6 +103,42 @@ inline void acionarEsterco(char cmd) {
   acionarPonte(PIN_ESQ, PIN_DIR, lado);
 }
 
+/* AJUSTAR NA BANCADA: menor duty que tira o esterco do centro contra a mola.
+ * Abaixo disto o motor so consome corrente e esquenta, sem mover nada. */
+static const int ESTERCO_MIN_UTIL = 90;
+
+/*
+ * Esterco por duty continuo, para quem produz saida proporcional (o fuzzy, as
+ * manobras). Nao passa por acionarEsterco(), entao reaplica aqui o MESMO teto
+ * termico: rotor bloqueado contra a mola em duty alto e exatamente o caso que
+ * esse teto protege.
+ */
+inline void aplicarEsterco(int duty) {
+  static unsigned long ligadoDesde = 0;
+  static unsigned long alivioAte   = 0;
+  static bool          ligado      = false;
+
+  const unsigned long agora = millis();
+  const int modulo = (duty < 0) ? -duty : duty;
+
+  if (modulo < ESTERCO_MIN_UTIL || agora < alivioAte) {
+    ligado = false;
+    acionarPonte(PIN_ESQ, PIN_DIR, 0);
+    return;
+  }
+
+  if (!ligado) { ligado = true; ligadoDesde = agora; }
+
+  if (agora - ligadoDesde >= ESTERCO_MAX_MS) {
+    alivioAte = agora + ESTERCO_ALIVIO_MS;
+    ligado    = false;
+    acionarPonte(PIN_ESQ, PIN_DIR, 0);
+    return;
+  }
+
+  acionarPonte(PIN_ESQ, PIN_DIR, duty);
+}
+
 inline void aplicarComando(char cmd) {
   if (cmd == 'F' || cmd == 'L' || cmd == 'R') {
     acionarPonte(PIN_FR, PIN_TR, dutyTracao);

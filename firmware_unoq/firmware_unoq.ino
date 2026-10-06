@@ -4,13 +4,25 @@
  * Recebe da CPU Linux, pela Bridge, a posicao do cone (gradiente) e o modo de
  * operacao, e aciona os dois motores: tracao e direcao.
  *
- * Organizacao (headers-only, todos incluidos so por este arquivo):
- *   motores.hpp     pinos, pontes H, tracao e esterco
- *   ultrassom.hpp   3 HC-SR04 com trigger unico
- *   desvioFuzzy.hpp base de regras fuzzy do desvio e do seguimento do cone
- *   manobra.hpp     (vazio: a reescrever)
- *   mpu.hpp         MPU6050 via I2C   (gated por USAR_MPU)
- *   desenharLed.hpp indicacao do modo no LED
+ * Este arquivo nao implementa comportamento. Ele faz tres coisas:
+ *   1. recebe o comando da Bridge e guarda o estado
+ *   2. traduz esse estado em um modo
+ *   3. despacha o modo para o servico correspondente, aplica as travas e aciona
+ *
+ * Cada comportamento vive no seu proprio header e serve uma funcao com a mesma
+ * forma -- entradas por parametro, vel e dir por referencia:
+ *
+ *   motores.hpp     acionarPonte, aplicarEsterco, pararMotores
+ *   ultrassom.hpp   atualizarSonares, dist_1..3, houveMedicaoNova
+ *   desvioFuzzy.hpp passoFuzzy       (modo 'a', aproximar)
+ *   busca.hpp       passoBusca       (modo 'p', procurar)
+ *   contorno.hpp    passoContorno    (modo 'c', contornar)  -- esqueleto
+ *   travas.hpp      aplicarTravas                           -- esqueleto
+ *   desenharLed.hpp atualizarLedModo
+ *   mpu.hpp         lerMPU   (gated por USAR_MPU)
+ *
+ * Nenhum servico sabe em que modo foi chamado -- ele so sabe executar o proprio
+ * comportamento. O despacho por modo existe so neste arquivo.
  *
  * USAR_MPU e a unica flag de compilacao que resta, e precisa ser definida ANTES
  * dos includes: o mpu.hpp depende dela para decidir se gera codigo.
@@ -23,7 +35,9 @@
 #include "motores.hpp"
 #include "ultrassom.hpp"
 #include "desvioFuzzy.hpp"
-#include "manobra.hpp"
+#include "busca.hpp"
+#include "contorno.hpp"
+#include "travas.hpp"
 #include "mpu.hpp"
 #include "desenharLed.hpp"
 
@@ -40,41 +54,15 @@
  */
 const unsigned long TIMEOUT_COMANDO_MS = 700;
 
-/* ─────────── BUSCA EM CIRCULO ───────────
- * Comportamento provisorio. Tres estados exclusivos no loop():
- *
- *   sem cone (modo 'p')          -> gira em circulo procurando
- *   cone centralizado            -> PARA
- *   cone visivel mas fora da     -> fuzzy assume (segue o cone e desvia)
- *   janela central
- *
- * AJUSTAR: a janela de +-50 no gradiente e chute confesso. O gradiente e
- * (cx - 320) * 255/320, entao 50 equivale a ~63 px num quadro de 640 -- cerca
- * de 10% da largura para cada lado do centro. Alargue se o robo ficar oscilando
- * sem nunca considerar centralizado; estreite se ele parar com o cone
- * visivelmente de lado.
- */
-static const int JANELA_CENTRADO = 50;
-
-/* AJUSTAR NA BANCADA: duty de tracao durante a busca. Tem que ser suficiente
- * para o robo descrever o circulo sem arrastar, e baixo o bastante para ele nao
- * sair de perto do cone quando passar por ele. */
-static const int VEL_BUSCA = 170;
-
-// Lado do circulo. +255 e esquerda (PIN_ESQ), -255 e direita.
-static const int DIR_BUSCA = 255;
-
 /* ─────────── ESTADO ─────────── */
 volatile unsigned long ultimoComandoMs = 0;
 volatile bool recebeuComando = false;   // separa "nunca recebeu" de "recebeu ha 0 ms"
 
-/* Protocolo novo da camera: gradiente (-255 a +255, POSITIVO = cone a DIREITA)
- * e modo ("aproximar" / "contornar" / "procurar"). Guardamos so a inicial do
- * modo: String em estado compartilhado com a thread da Bridge e pedir problema. */
+/* Protocolo da camera: gradiente (-255 a +255, POSITIVO = cone a DIREITA) e modo
+ * ("aproximar" / "contornar" / "procurar"). Guardamos so a inicial do modo:
+ * String em estado compartilhado com a thread da Bridge e pedir problema. */
 volatile int  gradienteCone = 0;
 volatile char modoCamera    = '?';   // 'a', 'c', 'p'
-
-
 
 /* ═══════════ BRIDGE (CPU Linux -> MCU) ═══════════ */
 
@@ -95,60 +83,29 @@ bool comandoEstaFresco() {
   return recebeuComando && (millis() - ultimoComandoMs) < TIMEOUT_COMANDO_MS;
 }
 
-/* ═══════════ ESTADO DA BUSCA ═══════════ */
+/* ═══════════ MODOS ═══════════ */
 
-/* Cone centralizado. SEM USO no momento -- fica disponivel para a trava de
- * "chegou no cone", que deve combinar isto com o ultrassom.
+/*
+ * O modo e a inicial do que a CPU manda: 'p' procurar, 'a' aproximar, 'c'
+ * contornar. Link caido vira 'x', mesma convencao que o desenharLed.hpp ja usa.
  *
- * Exige a camera VENDO o cone, nao so gradiente pequeno: em "procurar" o
- * ia_trekking manda gradiente 0, que cairia na janela e indicaria cone
- * centralizado justamente quando nao ha cone nenhum. */
-bool coneCentralizado() {
-  const int g = gradienteCone;
-  return modoCamera != 'p' && g >= -JANELA_CENTRADO && g <= JANELA_CENTRADO;
-}
+ * Quem sequencia os modos e a CPU, no DecidirModo() do ia_trekking.py -- o MCU
+ * nao inventa modo, so executa o que recebe usando os sensores locais.
+ *
+ * Nao vale criar um enum aqui: o .ino gera prototipos automaticos ANTES das
+ * definicoes do arquivo, e funcao que devolve tipo declarado no proprio .ino nao
+ * compila. O char resolve sem precisar de header so para o vocabulario.
+ */
+char modoAtual() {
+  if (!comandoEstaFresco()) return 'x';
 
-bool procurandoCone() {
-  return modoCamera == 'p';
-}
-
-/* ═══════════ ESTERCO CONTINUO ═══════════ */
-
-
-/* AJUSTAR NA BANCADA: menor duty que tira o esterco do centro contra a mola.
- * Abaixo disto o motor so consome corrente e esquenta, sem mover nada. */
-static const int ESTERCO_MIN_UTIL = 90;
-
-
-/* O fuzzy entrega duty continuo, entao nao passa por acionarEsterco() e perderia
- * o teto termico do motores.hpp. Este wrapper reaplica o mesmo teto: rotor
- * bloqueado contra a mola em duty alto e exatamente o caso que ele protege. */
-void aplicarEstercoFuzzy(int duty) {
-  static unsigned long ligadoDesde = 0;
-  static unsigned long alivioAte   = 0;
-  static bool          ligado      = false;
-
-  const unsigned long agora = millis();
-  const int modulo = (duty < 0) ? -duty : duty;
-
-  if (modulo < ESTERCO_MIN_UTIL || agora < alivioAte) {
-    ligado = false;
-    acionarPonte(PIN_ESQ, PIN_DIR, 0);
-    return;
+  switch (modoCamera) {
+    case 'p':
+    case 'a':
+    case 'c': return modoCamera;
+    default:  return 'x';   // '?' inicial e qualquer byte estranho
   }
-
-  if (!ligado) { ligado = true; ligadoDesde = agora; }
-
-  if (agora - ligadoDesde >= ESTERCO_MAX_MS) {
-    alivioAte = agora + ESTERCO_ALIVIO_MS;
-    ligado    = false;
-    acionarPonte(PIN_ESQ, PIN_DIR, 0);
-    return;
-  }
-
-  acionarPonte(PIN_ESQ, PIN_DIR, duty);
 }
-
 
 /* ═══════════ SETUP / LOOP ═══════════ */
 
@@ -164,8 +121,7 @@ void setup() {
   digitalWrite(LED_BUILTIN, LOW);
 
   inicializarSonares();
-
-  inicializarFuzzy();     // monta a base de regras UMA vez: a eFLL aloca com new
+  inicializarFuzzy();       // monta a base de regras UMA vez: a eFLL aloca com new
 
 #if USAR_MPU
   inicializarMPU();
@@ -174,49 +130,47 @@ void setup() {
 }
 
 void loop() {
-  const bool fresco = comandoEstaFresco();
+  atualizarSonares();       // dado fresco antes de qualquer decisao
 
-  atualizarSonares();   // antes do fuzzy: ele decide com o dado deste ciclo
+  const char modo = modoAtual();
 
-
-  /* 'fresco' e a chave geral: sem ninguem mandando comando pela Bridge, o robo
-   * fica parado. Serve de botao de emergencia -- matar o ia_trekking para o
-   * robo em menos de um segundo. */
   int vel = 0, dir = 0;
 
-  if (fresco) {
-    if (procurandoCone()) {
-      // Camera nao ve cone nenhum: gira em circulo ate aparecer.
-      vel = VEL_BUSCA;
-      dir = DIR_BUSCA;
-    }
-    else {
-      /* Cone a vista: o fuzzy assume, usando as tres distancias e o gradiente.
-       * Vale inclusive com o cone centralizado -- nesse caso a regra 14 devolve
-       * direcao 'centro' e as regras de distancia dao a velocidade, ou seja, ele
-       * segue em frente. 999 (eco perdido) esta fora do universo 0-400 e entra
-       * como "livre". */
-      fuzzy->setInput(1, dist_2 >= INVALID_DISTANCE ? 400.0f : dist_2);  // direita
-      fuzzy->setInput(2, dist_3 >= INVALID_DISTANCE ? 400.0f : dist_3);  // esquerda
-      fuzzy->setInput(3, dist_1 >= INVALID_DISTANCE ? 400.0f : dist_1);  // frente
-      fuzzy->setInput(4, (float)gradienteCone);                          // cone
-      fuzzy->fuzzify();
+  switch (modo) {
+    case 'p':   // procurar: gira em circulo ate a camera achar um cone
+      reiniciarContorno();
+      passoBusca(vel, dir);
+      break;
 
-      vel = (int)fuzzy->defuzzify(1);   // FuzzyOutput(1) = velocidade
-      dir = (int)fuzzy->defuzzify(2);   // FuzzyOutput(2) = direcao, + = esquerda
-    }
+    case 'a':   // aproximar: vai atras do cone, desviando de obstaculos
+      reiniciarBusca();
+      reiniciarContorno();
+      passoFuzzy(gradienteCone, vel, dir);
+      break;
+
+    case 'c':   // contornar: da a volta no cone alcancado
+      reiniciarBusca();
+      passoContorno(gradienteCone, vel, dir);
+      break;
+
+    default:    /* 'x' -- sem link. Chave geral e botao de emergencia do teste:
+                 * matar o ia_trekking para o robo em menos de um segundo.
+                 * vel e dir ficam em zero. */
+      reiniciarBusca();
+      reiniciarContorno();
+      break;
   }
 
+  aplicarTravas(vel, dir);  // ultima palavra: so reduz, nunca aumenta
+
   acionarPonte(PIN_FR, PIN_TR, vel);
-  aplicarEstercoFuzzy(dir);
-
-
-
+  aplicarEsterco(dir);
 
   // LED aceso = recebendo comando. Diagnostico de bancada sem serial.
-  digitalWrite(LED_BUILTIN, fresco ? HIGH : LOW);
+  digitalWrite(LED_BUILTIN, modo != 'x' ? HIGH : LOW);
+
 #if USAR_MPU
   lerMPU();
 #endif
-  atualizarLedModo(fresco, modoCamera);
+  atualizarLedModo(modo != 'x', modoCamera);
 }

@@ -170,4 +170,22 @@ void addRegraCone(int id, FuzzySet *frente, FuzzySet *cone, FuzzySet *direcao)
     fuzzy->addFuzzyRule(new FuzzyRule(id, a, c));
 }
 
+/*
+ * Um ciclo do controlador: le as distancias e o gradiente, devolve velocidade e
+ * direcao. O chamador nao precisa saber qual indice e qual entrada.
+ *
+ * 999 (eco perdido) esta fora do universo 0-400 e entra como 400, ou seja,
+ * "livre" -- a mesma decisao documentada no ultrassom.hpp.
+ */
+void passoFuzzy(int gradiente, int &vel, int &dir) {
+    fuzzy->setInput(1, dist_2 >= INVALID_DISTANCE ? 400.0f : dist_2);  // direita
+    fuzzy->setInput(2, dist_3 >= INVALID_DISTANCE ? 400.0f : dist_3);  // esquerda
+    fuzzy->setInput(3, dist_1 >= INVALID_DISTANCE ? 400.0f : dist_1);  // frente
+    fuzzy->setInput(4, (float)gradiente);                              // cone
+    fuzzy->fuzzify();
+
+    vel = (int)fuzzy->defuzzify(1);   // FuzzyOutput(1) = velocidade
+    dir = (int)fuzzy->defuzzify(2);   // FuzzyOutput(2) = direcao, + = esquerda
+}
+
 #endif 
