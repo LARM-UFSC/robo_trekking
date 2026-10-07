@@ -15,13 +15,6 @@ void reiniciarContorno(){
 }
 
 void passoContorno(int gradiente, int &vel, int &dir){
-    unsigned long inicio = millis();
-    vel = 0;
-    dir = 0;
-
-    if(pausa == 0) pausa = inicio + 2000; //em milliss
-    if(inicio < pausa) return;
-
 
     float esquerda = dist_3;
     float direita = dist_2;
@@ -29,10 +22,19 @@ void passoContorno(int gradiente, int &vel, int &dir){
     if (direita >= INVALID_DISTANCE) direita = 400;
 
   if (lado == 0) {
-    if (esquerda < direita) lado = +1;
-    else if (direita < esquerda) lado = -1;
-    else lado = (gradiente > 0) ? -1 : +1;
-
+    if (esquerda < direita) {
+      lado = +1;
+    }
+    else if (direita < esquerda) {
+      lado = -1;
+    }
+    else {
+      if (gradiente > 0) {
+        lado = -1;
+      }
+      else {
+        lado = +1;
+      }
   }
 
   float frente = dist_1;
@@ -40,15 +42,14 @@ void passoContorno(int gradiente, int &vel, int &dir){
 
   float lateral = (lado > 0) ? esquerda : direita;
 
-  if (frente < 15) {
-    re = inicio + 700;                      
-  }
-  else if (frente >= 70 && (lateral < 22 || lateral > 34)) {
-    re = inicio + 700;                     
+  if (frente < 15 || (frente >= 60 && (lateral < 22 || lateral > 60))) {
+    vel = -120;
+    dir = 0;
   }
   else {
     vel = 160;
     dir = lado * 200;                  
+  }
   }
 }
 
