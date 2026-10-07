@@ -108,8 +108,8 @@ aplicarTravas(vel, dir);
 
 | modo | serviço | estado |
 |---|---|---|
-| `'p'` procurar | `passoBusca` — círculo com ré de contra-esterço | pronto |
-| `'a'` aproximar | `passoFuzzy` — segue o cone e desvia | pronto |
+| `'p'` procurar | `passoBusca` — círculo com ré de contra-esterço | pronto, validado em pista |
+| `'a'` aproximar | `passoFuzzy` — segue o cone e desvia | pronto, validado em pista |
 | `'c'` contornar | `passoContorno` — orbita o cone | **esqueleto** |
 | `'x'` sem link | nada, `vel = dir = 0` | pronto |
 
@@ -315,7 +315,7 @@ Consumo atual: 93.388 bytes de flash (11%), 35.706 de RAM (13%).
 | `desvioFuzzy.hpp` | `inicializarFuzzy`, `passoFuzzy` | pronto |
 | `busca.hpp` | `passoBusca`, `reiniciarBusca` | pronto |
 | `contorno.hpp` | `passoContorno`, `reiniciarContorno` | **esqueleto** |
-| `travas.hpp` | `aplicarTravas` | **esqueleto** |
+| `travas.hpp` | `aplicarTravas` | pronto |
 | `desenharLed.hpp` | `inicializarLedModo`, `atualizarLedModo` | pronto |
 | `mpu.hpp` | `inicializarMPU`, `lerMPU` — gated por `USAR_MPU` (hoje 0) | pronto |
 

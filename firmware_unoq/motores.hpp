@@ -22,7 +22,7 @@
 
 /* ─────────── PARAMETROS ─────────── */
 static const int dutyTracao  = 215;   // 0-255
-static const int dutyRe      = 140;   // re mais devagar que a marcha a frente
+static const int dutyRe      = 180;   // re mais devagar que a marcha a frente
 static const int dutyDirecao = 255; 
   // AJUSTAR NA BANCADA: ver comentario de acionarEsterco
 
@@ -105,7 +105,7 @@ inline void acionarEsterco(char cmd) {
 
 /* AJUSTAR NA BANCADA: menor duty que tira o esterco do centro contra a mola.
  * Abaixo disto o motor so consome corrente e esquenta, sem mover nada. */
-static const int ESTERCO_MIN_UTIL = 90;
+static const int ESTERCO_MIN_UTIL = 70;
 
 /*
  * Esterco por duty continuo, para quem produz saida proporcional (o fuzzy, as

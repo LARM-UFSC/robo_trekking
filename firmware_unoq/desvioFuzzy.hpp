@@ -42,14 +42,31 @@ void inicializarFuzzy()
      *
      * ATENCAO ao sinal: esta convencao e OPOSTA a da saida de direcao, onde
      * positivo aciona PIN_ESQ. A inversao esta feita nas REGRAS (coneDir aponta
-     * para dirSuave), nao em conta aritmetica. Nao inverta de novo no .ino. */
-    FuzzySet *coneEsq    = new FuzzySet(-255, -255, -120, -20);
-    FuzzySet *coneCentro = new FuzzySet( -60,    0,    0,   60);
-    FuzzySet *coneDir    = new FuzzySet(  20,  120,  255,  255);
+     * para dirSuave), nao em conta aritmetica. Nao inverta de novo no .ino.
+     *
+     * CINCO niveis, nao tres. Com tres a saida ficava BINARIA, e o motivo nao e
+     * obvio: com um unico conjunto de saida ativo e simetrico, o centro de area
+     * independe do grau de disparo -- a pertinencia corta a altura da figura,
+     * mas o centroide de uma forma simetrica fica no mesmo lugar. Pertinencia
+     * 0,4 e 1,0 davam o mesmo esterco.
+     *
+     * Proporcionalidade no Mamdani vem da MISTURA de dois conjuntos de saida.
+     * Por isso os conjuntos abaixo se sobrepoem de proposito: em quase todo
+     * ponto da faixa, dois deles disparam juntos e o centroide varia.
+     *
+     * coneCentro e estreito (+-30) porque ele define a janela em que o robo NAO
+     * corrige. Com +-60 eram 22% da largura do quadro sem nenhuma reacao. */
+    FuzzySet *coneEsqForte = new FuzzySet(-255, -255, -150,  -50);
+    FuzzySet *coneEsqSuave = new FuzzySet(-130,  -60,  -60,   -8);
+    FuzzySet *coneCentro   = new FuzzySet( -30,    0,    0,   30);
+    FuzzySet *coneDirSuave = new FuzzySet(   8,   60,   60,  130);
+    FuzzySet *coneDirForte = new FuzzySet(  50,  150,  255,  255);
 
-    posicaoCone->addFuzzySet(coneEsq);
+    posicaoCone->addFuzzySet(coneEsqForte);
+    posicaoCone->addFuzzySet(coneEsqSuave);
     posicaoCone->addFuzzySet(coneCentro);
-    posicaoCone->addFuzzySet(coneDir);
+    posicaoCone->addFuzzySet(coneDirSuave);
+    posicaoCone->addFuzzySet(coneDirForte);
 
     //adicionando os fuzzyset as entradas
     distanciaDireita->addFuzzySet(pertoDi);
@@ -121,9 +138,11 @@ void inicializarFuzzy()
      * manda na direcao sao as regras 5-12, que usam os conjuntos FORTE e
      * dominam a composicao. O cone usa so SUAVE, de proposito: emergencia
      * ganha de perseguicao. */
-    addRegraCone(13, longeFr, coneEsq,    esqSuave);
-    addRegraCone(14, longeFr, coneCentro, centro);
-    addRegraCone(15, longeFr, coneDir,    dirSuave);
+    addRegraCone(13, longeFr, coneEsqForte, esqForte);
+    addRegraCone(14, longeFr, coneEsqSuave, esqSuave);
+    addRegraCone(15, longeFr, coneCentro,   centro);
+    addRegraCone(16, longeFr, coneDirSuave, dirSuave);
+    addRegraCone(17, longeFr, coneDirForte, dirForte);
     
 }
 
