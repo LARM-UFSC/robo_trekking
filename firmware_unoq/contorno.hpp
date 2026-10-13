@@ -22,6 +22,20 @@
  * de contornar e a CPU, no DecidirModo() do ia_trekking.py: o modo sai sozinho
  * quando a camera enxerga um cone longe.
  *
+ * ─────────── DUAS FASES, E O PORQUE ───────────
+ *
+ * Para ORBITAR um objeto, ele tem que ficar do lado INTERNO da curva. Ao entrar
+ * no modo o cone esta A FRENTE -- o robo vinha seguindo ele. Girar de imediato
+ * joga o cone para o lado de fora da curva, e o robo se afasta em vez de dar a
+ * volta. Era o que acontecia.
+ *
+ * Por isso a fase 0: avanca reto o suficiente para o cone sair da frente e
+ * ficar AO LADO. So entao a fase 1 gira, e gira para o lado onde o cone esta --
+ * descoberto pelos laterais, com o gradiente da camera como desempate.
+ *
+ * O lateral e usado so para ESCOLHER O LADO, uma vez. Nao ha malha fechada de
+ * distancia lateral: foi exatamente isso que nao funcionou antes.
+ *
  * Se o raio minimo do chassi for maior que a distancia em que se quer orbitar,
  * nenhuma logica resolve -- e geometria. Esse raio nunca foi medido: esterco no
  * batente, uma volta completa, medir o diametro do circulo.
@@ -35,7 +49,7 @@
  * orbita acontece perto das coisas; DIR no batente para o circulo ser o menor
  * possivel, que e o que permite orbitar em vez de passar largo. */
 static const int VEL_CONTORNO = 170;
-static const int DIR_CONTORNO = 255;   // + = esquerda (PIN_ESQ)
+static const int DIR_CONTORNO = 255;   // modulo; o sinal vem de contornoLado
 
 /* Limiares menores que os da busca (40 e 70): o contorno trabalha perto, e o
  * proprio cone e o obstaculo a frente. E precisam ficar ACIMA do CRITICO_CM
@@ -53,6 +67,17 @@ static const float CONTORNO_LIVRE    = 45.0f;   // acima disto, volta a girar
  * passa a ser ele e o teto vira so rede. */
 static const unsigned long TETO_RE_CONTORNO_MS = 900;
 
+/* AJUSTAR NA BANCADA: tempo de avanco reto antes de comecar a girar. Tem que
+ * ser o bastante para o cone passar do eixo dianteiro e ficar ao lado do robo.
+ * Curto demais e ele gira cedo e se afasta; longo demais e ele passa longe do
+ * cone e orbita o vazio. Observe o robo e ajuste: o giro deve comecar quando o
+ * cone estiver na altura das rodas. */
+static const unsigned long AVANCO_MS = 600;
+
+static int           contornoFase        = 0;   // 0 = avanco reto, 1 = orbita
+static unsigned long contornoAvancoAte   = 0;
+static bool          contornoAvancoAtivo = false;
+static int           contornoLado        = 0;   // +1 esquerda, -1 direita
 static bool          contornoRecuando    = false;
 static unsigned long contornoRecuandoAte = 0;
 
@@ -60,15 +85,44 @@ static unsigned long contornoRecuandoAte = 0;
 
 // A proxima entrada em contorno comeca girando, nao no meio de uma re.
 inline void reiniciarContorno() {
-  contornoRecuando = false;
+  contornoFase        = 0;
+  contornoAvancoAtivo = false;
+  contornoLado        = 0;
+  contornoRecuando    = false;
 }
 
 inline void passoContorno(int gradiente, int &vel, int &dir) {
-  (void)gradiente;   // lado do giro e fixo; a posicao do cone nao entra aqui
-
   const unsigned long agora  = millis();
   const float         frente = (dist_1 < INVALID_DISTANCE) ? dist_1 : 400.0f;
 
+  /* ─── FASE 0: avanca reto ate o cone ficar ao lado ─── */
+  if (contornoFase == 0) {
+    if (!contornoAvancoAtivo) {           // bool, nao sentinela: millis() pode ser 0
+      contornoAvancoAtivo = true;
+      contornoAvancoAte   = agora + AVANCO_MS;
+    }
+
+    // Aborta o avanco se a frente fechar: nao vale atropelar o cone.
+    if (agora < contornoAvancoAte && frente > CONTORNO_BLOQUEIO) {
+      vel = VEL_CONTORNO;
+      dir = 0;
+      return;
+    }
+
+    /* Avanco terminado: o cone agora esta ao lado, e o lateral mais perto diz
+     * de que lado. Empate (ou os dois perdidos) cai no gradiente da camera:
+     * positivo = cone a direita = girar para a direita = dir negativo. */
+    const float esq = (dist_3 < INVALID_DISTANCE) ? dist_3 : 400.0f;
+    const float dirn = (dist_2 < INVALID_DISTANCE) ? dist_2 : 400.0f;
+
+    if      (esq  < dirn) contornoLado = +1;   // cone a esquerda
+    else if (dirn < esq ) contornoLado = -1;   // cone a direita
+    else                  contornoLado = (gradiente > 0) ? -1 : +1;
+
+    contornoFase = 1;
+  }
+
+  /* ─── FASE 1: orbita ─── */
   if (contornoRecuando) {
     const bool liberou  = frente > CONTORNO_LIVRE;
     const bool estourou = agora >= contornoRecuandoAte;
@@ -85,10 +139,10 @@ inline void passoContorno(int gradiente, int &vel, int &dir) {
    * o que faz a orbita progredir em vez de oscilar entre dois pontos. */
   if (contornoRecuando) {
     vel = -dutyRe;
-    dir = -DIR_CONTORNO;
+    dir = -contornoLado * DIR_CONTORNO;
   } else {
     vel = VEL_CONTORNO;
-    dir = DIR_CONTORNO;
+    dir =  contornoLado * DIR_CONTORNO;
   }
 }
 
