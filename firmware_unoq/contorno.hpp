@@ -4,6 +4,12 @@
 #include "ultrassom.hpp"
 // contorna o cone assim que entra no modo contornar pelo ia_trekking.py
 // utilizando os sensores ultrassom. contorna ate ver outro cone longe e aproxiomar novamente
+//
+// O giro e com dir POSITIVO (= esquerda, PIN_ESQ), entao o cone orbitado fica a
+// ESQUERDA e o sensor que o acompanha e o dist_3. Era dist_2 (direita), que
+// aponta para o lado vazio: lia longe, caia no ramo "longe demais" e o robo
+// recuava quase o tempo todo. Se um dia o giro inverter para dir negativo, o
+// sensor tem que inverter junto.
 
 unsigned long inicio = 0;
 unsigned long inicioRe = 0;
@@ -44,10 +50,20 @@ void passoContorno(int gradiente, int &vel, int &dir){
       } else{ //acabou a re
         inicioRe = 0;
       }
-    } else if (dist_2 < 15) { //confere se ta perto demais
+    } else if (dist_1 < 25) { //frente fechada
+      /* Sem este ramo o contorno TRAVA: a trava critica zera o avanco a 15 cm,
+       * a trava solta o esterco porque vel == 0, e no ciclo seguinte o contorno
+       * pede avanco de novo -- robo parado para sempre encarando o obstaculo.
+       * A trava nao bloqueia re, entao pedir re aqui e a saida.
+       *
+       * Os 25 cm ficam ACIMA do CRITICO_CM (15) das travas de proposito: a
+       * manobra reage primeiro, a trava e a rede embaixo dela. */
+      inicioRe = millis();
+      dirRe = 0;              //recua reto, so para se afastar da frente
+    } else if (dist_3 < 15) { //confere se ta perto demais
       inicioRe = millis();
       dirRe = 200;
-    } else if (dist_2 > 70) { //longe demais
+    } else if (dist_3 > 70) { //longe demais
       inicioRe = millis();
       dirRe = 200;
     } else { //faixa certa, gira
