@@ -25,7 +25,6 @@ static const int dutyTracao  = 215;   // 0-255
 static const int dutyRe      = 180;   // re mais devagar que a marcha a frente
 static const int dutyDirecao = 255; 
   // AJUSTAR NA BANCADA: ver comentario de acionarEsterco
-
 static const unsigned long ESTERCO_MAX_MS    = 2500;  // teto de acionamento continuo
 static const unsigned long ESTERCO_ALIVIO_MS = 500;   // descanso obrigatorio apos o teto
 
