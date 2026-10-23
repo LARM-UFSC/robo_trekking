@@ -14,10 +14,10 @@
 
 
 //frente
-#define PIN_FR_DIR_FR   
-#define PIN_FR_DIR_TS
+#define PIN_FR_DIR_FR   //definir
+#define PIN_FR_DIR_TS   //definir
 
-#define PIN_FR_ESQ_FR
+#define PIN_FR_ESQ_FR   //...
 #define PIN_FR_ESQ_TS
 
 //tras
@@ -26,6 +26,22 @@
 
 #define PIN_TR_ESQ_FR
 #define PIN_TR_ESQ_TS
+
+
+inline void inicializarMotores() {
+  piMode(PIN_FR_DIR_FR, OUTPUT);
+  piMode(PIN_FR_DIR_TS, OUTPUT);
+
+  piMode(PIN_FR_ESQ_FR, OUTPUT);
+  piMode(PIN_FR_ESQ_TS, OUTPUT);
+
+  piMode(PIN_TR_DIR_FR, OUTPUT);
+  piMode(PIN_TR_DIR_TS, OUTPUT);
+
+  piMode(PIN_TR_ESQ_FR, OUTPUT);
+  piMode(PIN_TR_ESQ_TS, OUTPUT);
+  pararMotores();
+}
 
 inline void acionarPonte(int pinoA, int pinoB, int duty) {
   if (duty > 0) {
@@ -48,7 +64,4 @@ inline void pararMotores() {
   acionarPonte(PIN_TR_ESQ_FR, PIN_TR_ESQ_TS, 0);
 }
 
-inline void inicializarMotores() {
-  //pinmode pra cada
-  pararMotores();
-}
+#endif
