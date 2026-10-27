@@ -1,66 +1,88 @@
-#ifndef ULTRASSOM_HPP
-#define ULTRASSOM_HPP
-
-/**
+/*
  * seis(6) sensores HC-SR04: 3 frontais, 3 traseiros,
  * cobrindo ângulos diagonais entre si.
  * TRIGGER unico compartilhado.
  * Header-only, incluido apenas pelo firmware_unoq.ino.
- */
+*/
+#ifndef ULTRASSOM_HPP
+#define ULTRASSOM_HPP
 
 #include <Arduino.h>
 
-#define PIN_TRIGGER  //definir
+class Ultrassons{
+  private:
+    int _PIN_TRIGGER;
 
-#define ECHO_1      //definir
-#define ECHO_2      //definir
-#define ECHO_3      //...
+    int _ECHO_1;      
+    int _ECHO_2;      
+    int _ECHO_3;      
 
-#define ECHO_4      
-#define ECHO_5
-#define ECHO_6
+    int _ECHO_4;      
+    int _ECHO_5;
+    int _ECHO_6;
 
-#define INVALID_DISTANCE 999.0f
-#define ECHO_TIMEOUT_US  25000UL   // ~4 m ida e volta
+    float _INVALID_DISTANCE = 999.0f;
+    unsigned long _ECHO_TIMEOUT_US = 25000UL;
+    const unsigned long _INTERVALO_SONAR_MS = 60;
+    unsigned long _ciclosSonar = 0;
+    unsigned long _ultimo = 0; // usado em atualizarSonares
 
-static const unsigned long INTERVALO_SONAR_MS = 60; //como sabe que 60 ta em ms??
-
-/* Incrementa a cada medicao concluida. Quem precisa de debounce compara com o
- * ultimo valor visto: o loop() roda muito mais rapido que INTERVALO_SONAR_MS, e
- * um contador incrementado por iteracao saturaria sobre a MESMA leitura. */
-
-static unsigned long ciclosSonar = 0;
-
-static float dist_1 = INVALID_DISTANCE;
-static float dist_2 = INVALID_DISTANCE;
-static float dist_3 = INVALID_DISTANCE;
-static float dist_4 = INVALID_DISTANCE;
-static float dist_5 = INVALID_DISTANCE;
-static float dist_6 = INVALID_DISTANCE;
+    float _dist_1 = _INVALID_DISTANCE;
+    float _dist_2 = _INVALID_DISTANCE;
+    float _dist_3 = _INVALID_DISTANCE;
+    float _dist_4 = _INVALID_DISTANCE;
+    float _dist_5 = _INVALID_DISTANCE;
+    float _dist_6 = _INVALID_DISTANCE;
 
 
-/* true uma unica vez por medicao. Cada chamador guarda o proprio marcador, por
- * isso o parametro -- dois consumidores nao se atropelam. */
-inline bool houveMedicaoNova(unsigned long &ultimoVisto) { //como vai saber o ultimo visto?
-  if (ciclosSonar == ultimoVisto) return false;
-  ultimoVisto = ciclosSonar;
+  public:
+    Ultrassons(int pino1, int pino2, int pino3, int pino4, int pino5, int pino6, int pino7);
+    inline bool houveMedicaoNova(unsigned long &ultimoVisto);
+    inline void inicializarSonares();
+    inline float usParaCm(unsigned long us);
+    inline void atualizarSonares();
+    inline float getDist1();
+    inline float getDist2();
+    inline float getDist3();
+    inline float getDist4();
+    inline float getDist5();
+    inline float getDist6();
+};
+
+
+Ultrassons::Ultrassons(int pino1, int pino2, int pino3, int pino4, int pino5, int pino6, int pino7){
+    _ECHO_1 = pino1;      
+    _ECHO_2 = pino2;      
+    _ECHO_3 = pino3;      
+
+    _ECHO_4 = pino4;      
+    _ECHO_5 = pino5;
+    _ECHO_6 = pino6;
+
+    _PIN_TRIGGER = pino7;
+}
+
+
+inline bool Ultrassons::houveMedicaoNova(unsigned long &ultimoVisto) {
+  if (_ciclosSonar == ultimoVisto) return false;
+  ultimoVisto = _ciclosSonar;
   return true;
 }
 
-inline void inicializarSonares() {
-  pinMode(PIN_TRIGGER, OUTPUT);
-  digitalWrite(PIN_TRIGGER, LOW);
+inline void Ultrassons::inicializarSonares() {
+  pinMode(_PIN_TRIGGER, OUTPUT);
+  digitalWrite(_PIN_TRIGGER, LOW);
 
-  const int echos[] = {ECHO_1, ECHO_2, ECHO_3, ECHO_4, ECHO_5, ECHO_6};
-  for (unsigned i = 0; i < sizeof(echos) / sizeof(echos[0]); i++) { //por que esse /sizeof(echos[0)])?
+  const int echos[] = {_ECHO_1, _ECHO_2, _ECHO_3, _ECHO_4, _ECHO_5, _ECHO_6};
+  for (unsigned i = 0; i < sizeof(echos) / sizeof(echos[0]); i++) {
     pinMode(echos[i], INPUT);
   }
 }
 
-inline float usParaCm(unsigned long us) {
-  if (us == 0) return INVALID_DISTANCE; 
+inline float Ultrassons::usParaCm(unsigned long us) {
+  if (us == 0) return _INVALID_DISTANCE; 
   float cm = us / 58.0f;
-  if (cm < 4.0f || cm > 400.0f) return INVALID_DISTANCE;
+  if (cm < 4.0f || cm > 400.0f) return _INVALID_DISTANCE;
   return cm;
 }
 
@@ -72,55 +94,73 @@ inline float usParaCm(unsigned long us) {
  */
 
  
-inline void atualizarSonares() {
-  static unsigned long ultimo = 0;
-  if (millis() - ultimo < INTERVALO_SONAR_MS) return; //pra que essa conferida estranha? do que se trata?
-  ultimo = millis();
+inline void Ultrassons::atualizarSonares() {
+  if (millis() - _ultimo < _INTERVALO_SONAR_MS) return;
+  _ultimo = millis();
 
-  const int   echos[] = {ECHO_1, ECHO_2, ECHO_3, ECHO_4, ECHO_5, ECHO_6};
-  const int   N       = sizeof(echos) / sizeof(echos[0]); //por que divide pelo echos na posicao 0?
+  const int   echos[] = {_ECHO_1, _ECHO_2, _ECHO_3, _ECHO_4, _ECHO_5, _ECHO_6};
+  const int   N       = sizeof(echos) / sizeof(echos[0]);
   unsigned long inicio[N], largura[N];
   bool subiu[N], pronto[N];
 
-  for (int i = 0; i < N; i++) { //aqui pelo visto ta preparando as variaveis de teste ne?
+  for (int i = 0; i < N; i++) {
     inicio[i] = 0; largura[i] = 0;
     subiu[i]  = false; pronto[i] = false;
   }
 
   // dispara uma unica vez
-  //por que 2 e depois 10 micross?
-  digitalWrite(PIN_TRIGGER, LOW);
+  
+  digitalWrite(_PIN_TRIGGER, LOW);
   delayMicroseconds(2);
-  digitalWrite(PIN_TRIGGER, HIGH);
+  digitalWrite(_PIN_TRIGGER, HIGH);
   delayMicroseconds(10);
-  digitalWrite(PIN_TRIGGER, LOW);
+  digitalWrite(_PIN_TRIGGER, LOW);
 
-  unsigned long t0 = micros(); //esse micros() é o tempo atual do processamento ne?
-  int faltam = N; //como assim faltam n? esse n é declarado logo ali em cima pra ser o que?
+  unsigned long t0 = micros(); 
+  int faltam = N; 
 
-  while (faltam > 0 && (micros() - t0) < ECHO_TIMEOUT_US) { //traduza isso aí pra linguagem humana
+  while (faltam > 0 && (micros() - t0) < _ECHO_TIMEOUT_US) { 
     for (int i = 0; i < N; i++) {
       if (pronto[i]) continue;
 
-      int nivel = digitalRead(echos[i]); //pelo visto ele vai ler cada echo por vez do while
+      int nivel = digitalRead(echos[i]);
 
       if (!subiu[i]) {
         if (nivel == HIGH) { subiu[i] = true; inicio[i] = micros(); }
-      } else if (nivel == LOW) { // e isso aqui é o calculo de largura de cada echo/sensor ou seja distancia é isso?
+      } else if (nivel == LOW) {
         largura[i] = micros() - inicio[i];
-        pronto[i]  = true; //pra que esse pronto?
+        pronto[i]  = true;
         faltam--;
       }
     }
   }
 
-  dist_1 = pronto[0] ? usParaCm(largura[0]) : INVALID_DISTANCE;
-  dist_2 = pronto[1] ? usParaCm(largura[1]) : INVALID_DISTANCE;
-  dist_3 = pronto[2] ? usParaCm(largura[2]) : INVALID_DISTANCE;
-  dist_4 = pronto[3] ? usParaCm(largura[3]) : INVALID_DISTANCE;
-  dist_5 = pronto[4] ? usParaCm(largura[4]) : INVALID_DISTANCE;
-  dist_6 = pronto[5] ? usParaCm(largura[5]) : INVALID_DISTANCE;
-  ciclosSonar++;
+  _dist_1 = pronto[0] ? usParaCm(largura[0]) : _INVALID_DISTANCE;
+  _dist_2 = pronto[1] ? usParaCm(largura[1]) : _INVALID_DISTANCE;
+  _dist_3 = pronto[2] ? usParaCm(largura[2]) : _INVALID_DISTANCE;
+  _dist_4 = pronto[3] ? usParaCm(largura[3]) : _INVALID_DISTANCE;
+  _dist_5 = pronto[4] ? usParaCm(largura[4]) : _INVALID_DISTANCE;
+  _dist_6 = pronto[5] ? usParaCm(largura[5]) : _INVALID_DISTANCE;
+  _ciclosSonar++;
 }
 
+
+inline float Ultrassons::getDist1(){
+  return _dist_1;
+}
+inline float Ultrassons::getDist2(){
+  return _dist_2;
+}
+inline float Ultrassons::getDist3(){
+  return _dist_3;
+}
+inline float Ultrassons::getDist4(){
+  return _dist_4;
+}
+inline float Ultrassons::getDist5(){
+  return _dist_5;
+} 
+inline float Ultrassons::getDist6(){
+  return _dist_6;
+}
 #endif

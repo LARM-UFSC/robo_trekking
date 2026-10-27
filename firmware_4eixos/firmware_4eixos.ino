@@ -38,3 +38,11 @@
 #include "travas.hpp"
 #include "mpu.hpp"
 #include "desenharLed.hpp"
+
+Motores motores(); //definir pinos no parametro
+
+
+void setup() {
+    motores.inicializarMotores();
+    
+}
