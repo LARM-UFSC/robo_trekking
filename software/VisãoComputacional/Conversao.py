@@ -5,7 +5,7 @@ from ultralytics import YOLO
 
 BASE = './dataset' 
 
-# limpeza e preparação da pasta de labels
+# limpeza e preparacao da pasta de labels
 train_lab_dir = os.path.join(BASE, 'labels/train')
 os.makedirs(train_lab_dir, exist_ok=True)
 
