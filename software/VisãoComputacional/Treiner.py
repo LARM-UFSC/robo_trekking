@@ -10,9 +10,9 @@ if not os.path.exists(yaml_path):
     print(f"Erro: O arquivo {yaml_path} não foi encontrado.")
     exit()
 
-print("Treinamento YOLO-Seg ")
-# carrega a arquitetura base de segmentacao (nano)
-model = YOLO('yolov26n-seg.pt')
+print("Treinamento YOLO (detecção) ")
+# carrega a arquitetura base de deteccao (nano)
+model = YOLO('yolo26n.pt')
 
 model.train(
     data=yaml_path,
@@ -39,7 +39,7 @@ if not os.path.exists(best_weights):
 # carrega os pesos finais e faz a exportacao
 model_trained = YOLO(best_weights)
 
-# task='segment' e crucial para manter a capacidade de gerar os poligonos
-model_trained.export(format='ncnn', imgsz=320, task='segment')
+# adicionar task segment caso for de futuro interesse. por enquanto, apenas detect
+model_trained.export(format='ncnn', imgsz=320)
 
 print("A pasta NCNN foi gerada e esta pronta para ir pro Arduino Uno Q.")
