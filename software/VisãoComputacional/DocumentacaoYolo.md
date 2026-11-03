@@ -116,7 +116,7 @@ model.train(
                 └── labels/       
 
 ## 6. Integração ao Robô
-O modelo é usado no arquivo **\robo_trekkig\software\ArduinoUnoQ\ia_trekking.py**, que roda no Linux do Arduino UNO Q. É executado em loop: **capturar frame → detectar cone → calcular posição e distância → enviar ao MCU**.
+O modelo é usado no arquivo **\robo_trekkig\software\ArduinoUnoQ\ia_trekking.py**, que roda no Linux do Arduino UNO Q. É executado em loop: **capturar frame → detectar cone → calcular posição e distância → enviar ao MCU**. No projeto, o arquivo é 
 
 ### 6. 1. carregamento, inferência e cálculo de posição respectivamente.
 
@@ -140,15 +140,55 @@ def CalcularDirecao(cx):                        # cx é o centro horizontal
 ```python
 bridge.call("processa_direcao", gradiente, modo)    # comando interno do arduino entre MPU e MCU
 ```
+### 6. 4. inicialização automática
+O programa é registrado como um **serviço do systemd** `ia-trekking.service` e é iniciado automaticamente quando o Linux do UNO Q liga, sem necessidade de acesso via SSH. Ele roda continuamente até a placa ser desligada ou o serviço ser parado. O arquivo fica em /etc/systemd/system/ia-trekking.service no Arduino.
+
+
+
+
+
 ### 6. 3. opção modo visual
-- conectando via ssh, rodando o programa no terminal com a flag *--visual*, é possível conferir o que a câmera vê, e os dados registrados em tempo real, acessando http://192.168.1.194:8000/video.
+conectando via ssh, rodando o programa no terminal com a flag *--visual*, é possível conferir o que a câmera vê, e os dados registrados em tempo real, acessando http://192.168.1.194:8000/video. para evitar interferência, pausar e desabilitar momentaneamente o serviço de systemctl, rodando *sudo systemctl stop ia-trekking* e *sudo systemctl disable ia-trekking* no terminal. ao final, para reabilitar o serviço systemctl, basta rodar sudo systemctl enable ia-trekking.
 
 ```bash
 python3 ia_trekking.py --visual
 ```
 
 
-## 7. Referências
+## 7. Problemas Encontrados e Soluções; debug e comandos;
+
+### 7. 1. `ImportError: libGL.so.1`
+
+- **Causa:** `opencv-python` e `opencv-python-headless` instalados ao mesmo tempo. A versão completa exige bibliotecas gráficas que a placa não possui.
+- **Solução:** `pip uninstall opencv-python`, mantendo só o `headless`.
+
+### 7. 2. `ModuleNotFoundError: No module named 'arduino'`
+
+- **Causa:** o módulo `arduino.app_utils` só existe dentro dos containers Docker do Arduino App Lab. Ele não pode ser instalado com `pip` no Linux da placa.
+- **Solução:** usar o pacote oficial `arduino-router-bridge` (`pip install arduino-router-bridge`), que funciona fora do App Lab. O código deixa de ser `Bridge.call(...)` e torna-se uma instância no código:
+  ```python
+  from arduino.router_bridge import Bridge
+  bridge = Bridge()
+  bridge.connect()
+  bridge.call("processa_direcao", gradiente, modo)
+  ```
+
+### 7. 3. `libGL`, `No module named 'ultralytics'`, `No module named 'arduino'` em loop.
+- **Causa:** o PyTorch padrão tenta buscar bibliotecas de GPU NVIDIA, que o UNO Q não possui.
+- **Solução:** instalar a versão **CPU** do PyTorch.
+
+
+
+### 7. 4. outros comandos geralmente utilizados em atualização e debug
+```bash 
+arduino-cli compile -b arduino:zephyr:unoq firmware_unoq
+arduino-cli upload  -b arduino:zephyr:unoq firmware_unoq
+systemctl status ia-trekking        
+journalctl -u ia-trekking -f
+pip show ultralytics                # versão instalada
+```
+
+## 8. Referências
 1. datasheet Arduino UNO Q: https://docs.arduino.cc/resources/datasheets/ABX00162-ABX00173-datasheet.pdf
 2. documentação oficial YOLO: https://docs.ultralytics.com/pt
 3. plataforma de anotação: https://roboflow.com
