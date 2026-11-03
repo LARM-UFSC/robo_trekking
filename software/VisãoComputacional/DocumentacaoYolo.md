@@ -1,7 +1,7 @@
 # visão computacional RoboTrekking
 > Documentação da parte de detecção de objetos embarcada
 
-> Última atualização: 29/10/2026 por Arthur Fogliato
+> Última atualização: 03/11/2026 por Arthur Fogliato
 
 > Esta documentação descreve a organização dos arquivos, as tecnologias utilizadas, o processo de treinamento e exportação do modelo e sua integração ao software embarcado.
 
