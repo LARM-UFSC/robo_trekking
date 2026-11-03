@@ -2,6 +2,7 @@
 #define DESVIOFYZZY_HPP
 
 #include "ultrassom.hpp"
+#include "motores.hpp"   // FATOR_TENSAO_BATERIA
 #include <Fuzzy.h>
 
 
@@ -203,7 +204,7 @@ void passoFuzzy(int gradiente, int &vel, int &dir) {
     fuzzy->setInput(4, (float)gradiente);                              // cone
     fuzzy->fuzzify();
 
-    vel = (int)fuzzy->defuzzify(1);   // FuzzyOutput(1) = velocidade
+    vel = (int)(fuzzy->defuzzify(1) * FATOR_TENSAO_BATERIA);   // FuzzyOutput(1) = velocidade, calibrada a 8,4V
     dir = (int)fuzzy->defuzzify(2);   // FuzzyOutput(2) = direcao, + = esquerda
 }
 

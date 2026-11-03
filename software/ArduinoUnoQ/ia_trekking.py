@@ -107,13 +107,13 @@ def DecidirModo(results, contornando):
         
         if Perto(y1, y2):
             contornando = True
-            return "contornar", contornando
+            return "estacionar", contornando
         else:
             contornando = False
             return "aproximar", contornando
     else:
         if contornando:
-            return "contornar", contornando
+            return "estacionar", contornando
         else:
             return "procurar", contornando
       

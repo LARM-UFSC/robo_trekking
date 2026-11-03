@@ -54,7 +54,7 @@
  * maximo, na diagonal e na orbita, por decisao de pista; DIR no batente para o
  * circulo ser o menor possivel, que e o que permite orbitar em vez de passar
  * largo. */
-static const int VEL_CONTORNO = 240;
+static const int VEL_CONTORNO = (int)(240 * FATOR_TENSAO_BATERIA);   // 240 a 8,4V
 static const int DIR_CONTORNO = 255;   // modulo; o sinal vem de contornoLado
 
 /* Limiares menores que os da busca (40 e 70): o contorno trabalha perto, e o
@@ -78,7 +78,7 @@ static const unsigned long TETO_RE_CONTORNO_MS = 900;
  * o angulo: aumente se ele ainda comeca muito reto, diminua se virar demais e
  * perder o cone. */
 static const unsigned long GIRO_DIAGONAL_MS = 3500;
-static const int           VEL_DIAGONAL     = 240;   // quase o maximo
+static const int           VEL_DIAGONAL     = (int)(240 * FATOR_TENSAO_BATERIA);   // 240 a 8,4V
 
 /* Trecho reto no fim da diagonal, com o volante centralizado. A orbita gira
  * para o lado OPOSTO ao da diagonal; sem esse trecho o volante vai do batente

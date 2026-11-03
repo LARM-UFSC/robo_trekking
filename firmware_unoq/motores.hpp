@@ -21,9 +21,17 @@
 #define PIN_DIR 11    // PB15 TIM1_CH3N — direcao direita
 
 /* ─────────── PARAMETROS ─────────── */
-static const int dutyTracao  = 215;   // 0-255
-static const int dutyRe      = 180;   // re mais devagar que a marcha a frente
-static const int dutyDirecao = 255; 
+
+/* Os duty abaixo foram calibrados a 8,4 V. A bateria passou a ser de 12 V em
+ * 2026-11: na mesma tensao media (duty * Vbat), o duty equivalente cai na razao
+ * entre as tensoes. Aplicado a toda saida de VELOCIDADE (aqui, busca.hpp,
+ * contorno.hpp, desvioFuzzy.hpp) -- NAO a dutyDirecao, que e torque do esterco
+ * contra a mola, nao velocidade de deslocamento. */
+static const float FATOR_TENSAO_BATERIA = 8.4f / 12.0f;   // ~0.70
+
+static const int dutyTracao  = (int)(215 * FATOR_TENSAO_BATERIA);   // 215 a 8,4V
+static const int dutyRe      = (int)(180 * FATOR_TENSAO_BATERIA);   // re mais devagar que a marcha a frente, 180 a 8,4V
+static const int dutyDirecao = 255;
   // AJUSTAR NA BANCADA: ver comentario de acionarEsterco
 static const unsigned long ESTERCO_MAX_MS    = 2500;  // teto de acionamento continuo
 static const unsigned long ESTERCO_ALIVIO_MS = 500;   // descanso obrigatorio apos o teto

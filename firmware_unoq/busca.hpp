@@ -21,7 +21,7 @@
 /* AJUSTAR NA BANCADA: duty de tracao durante a busca. Suficiente para descrever
  * o circulo sem arrastar, e baixo o bastante para nao passar longe de um cone
  * que entrou no campo de visao. */
-static const int VEL_BUSCA = 170;
+static const int VEL_BUSCA = (int)(170 * FATOR_TENSAO_BATERIA);   // 170 a 8,4V
 
 // Lado do circulo. +255 e esquerda (PIN_ESQ), -255 e direita.
 static const int DIR_BUSCA = 255;

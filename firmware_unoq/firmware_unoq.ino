@@ -16,7 +16,8 @@
  *   ultrassom.hpp   atualizarSonares, dist_1..3, houveMedicaoNova
  *   desvioFuzzy.hpp passoFuzzy       (modo 'a', aproximar)
  *   busca.hpp       passoBusca       (modo 'p', procurar)
- *   contorno.hpp    passoContorno    (modo 'c', contornar)  -- esqueleto
+ *   contorno.hpp    passoContorno    (modo 'c', contornar)  -- nao mais despachado pelo ia_trekking.py, ver modo 'e'
+ *   (sem header)    so zera vel/dir  (modo 'e', estacionar) -- chegou perto do cone, para em vez de contornar
  *   travas.hpp      aplicarTravas                           -- esqueleto
  *   desenharLed.hpp atualizarLedModo
  *   mpu.hpp         lerMPU   (gated por USAR_MPU)
@@ -102,7 +103,8 @@ char modoAtual() {
   switch (modoCamera) {
     case 'p':
     case 'a':
-    case 'c': return modoCamera;
+    case 'c':
+    case 'e': return modoCamera;
     default:  return 'x';   // '?' inicial e qualquer byte estranho
   }
 }
@@ -148,9 +150,14 @@ void loop() {
       passoFuzzy(gradienteCone, vel, dir);
       break;
 
-    case 'c':   // contornar: da a volta no cone alcancado
+    case 'c':   // contornar: da a volta no cone alcancado -- nao mais despachado pelo ia_trekking.py
       reiniciarBusca();
       passoContorno(gradienteCone, vel, dir);
+      break;
+
+    case 'e':   // estacionar: chegou perto do cone, para (vel e dir ficam em zero)
+      reiniciarBusca();
+      reiniciarContorno();
       break;
 
     default:    /* 'x' -- sem link. Chave geral e botao de emergencia do teste:
