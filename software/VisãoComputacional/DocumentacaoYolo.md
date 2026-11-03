@@ -181,8 +181,7 @@ python3 ia_trekking.py --visual
 
 ### 7. 4. outros comandos geralmente utilizados em atualização e debug
 ```bash 
-arduino-cli compile -b arduino:zephyr:unoq firmware_unoq
-arduino-cli upload  -b arduino:zephyr:unoq firmware_unoq
+arduino-cli compile --upload --fqbn arduino:zephyr:unoq -p /dev/ttyACM0
 systemctl status ia-trekking        
 journalctl -u ia-trekking -f
 pip show ultralytics                # versão instalada
