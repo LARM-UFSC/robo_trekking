@@ -22,16 +22,16 @@ O modelo utilizado foi treinado para reconhecer apenas a classe **cone** em pote
 |------------|-------------------|
 |   Placa    |   Arduino UNO Q   |
 |   MPU      |  Qualcomm QRB2210 |
-|   MCU      |      STM32U58     |
+|   MCU      |     STM32U585     |
 |   Câmera   | Logitech C270 HD  |
-|   HUB      | Adaptador USB-C   |
+|   HUB      |  Adaptador USB-C  |
 
 ### 2.2. Software
 |   item     |   versão       |
 |------------|----------------|
-|     OS     |                |
+|     OS     |    Linux 13    |
 |   Python   |      3.13      |
-|Ultralythics|                |
+|Ultralytics |     8.4.34     |
 |   OpenCV   | python-headless|
 
 ### 2.3. Modelo
@@ -52,53 +52,106 @@ O modelo utilizado foi treinado para reconhecer apenas a classe **cone** em pote
 ## 3. Termos Relacionados
 
 ### 3.1. Visão computacional
-- YOLO: um algoritmo de detecção e classificação de objetos em imagens em tempo real;
-- Detecção vs. segmentação: segmentação marca pixel a pixel do objeto. No projeto, utilizamos Deteccção: apenas a Bounding Box;
-- Bounding box: retângulo que envolve o objeto detectado. "caixa" de coordenadas x1, x2, y1, y2;
-- Classe: é possível criar e treinar para quantas classes forem desejadas. Aqui, foi escolhido apenas Cone;
-- Inferência: é a utilização do modelo já treinado para o reconhecimento desejado. é a aplicação a cada frame da câmera;
-- Confiança(`conf`): A certeza de que tal detecção é determinada classe. No projeto, abaixo de 0,8 é descartado;
+- **YOLO:** um algoritmo de detecção e classificação de objetos em imagens em tempo real;
+- **Detecção vs. segmentação:** segmentação marca pixel a pixel do objeto. No projeto, utilizamos Deteccção: apenas a Bounding Box;
+- **Bounding box:** retângulo que envolve o objeto detectado. "caixa" de coordenadas x1, x2, y1, y2;
+- **Classe:** é possível criar e treinar para quantas classes forem desejadas. Aqui, foi escolhido apenas Cone;
+- **Inferência:** é a utilização do modelo já treinado para o reconhecimento desejado. é a aplicação a cada frame da câmera;
+- **Confiança(`conf`):** A certeza de que tal detecção é determinada classe. No projeto, abaixo de 0,8 é descartado;
 
 ### 3.2. Treinamento
-- Dataset: conjunto de imagens coletadas e rotuladas;
-- Anotação (rótulo / label): marcação manual, realizada por um humano em cada imagem;
-- Fine-tuning (transfer learning): reaproveitar um modelo já treinado, ajustando-o para os objetos de interesse;
-- Época: quantidade de tentativas de treinamento e refinamento até o resultado final;
+- **Dataset:** conjunto de imagens coletadas e rotuladas;
+- **Anotação (rótulo / label):** marcação manual, realizada por um humano em cada imagem;
+- **Fine-tuning (transfer learning):** reaproveitar um modelo já treinado, ajustando-o para os objetos de interesse;
+- **Época:** quantidade de tentativas de treinamento e refinamento até o resultado final;
 
 ### 3.3. Formatos e arquivos
-- YAML: arquivo formato de texto, utilizado para configuração do treinamento;
-- NCNN: um dos formatos de modelo final exportado pelo ultralythics. NCNN é leve, feito para rodar em CPUs de dispositivos embarcados;
-- rotulação YOLO: formato .txt. ex: 0 0.871 0.395 0.238 0.671;
-- rotulação COCO: formato JSON. ex: "image_id": 1, "category_id": 1, "bbox": [120, 80, 60, 150];
+- **YAML:** arquivo formato de texto, utilizado para configuração do treinamento;
+- **NCNN:** um dos formatos de modelo final exportado pelo ultralythics. NCNN é leve, feito para rodar em CPUs de dispositivos embarcados;
+- **rotulação YOLO:** formato .txt. ex: 0 0.871 0.395 0.238 0.671;
+- **rotulação COCO:** formato JSON. ex: "image_id": 1, "category_id": 1, "bbox": [120, 80, 60, 150];
 
 ### 3.4. Ferramentas e bibliotecas
-- Ultralytics: biblioteca Python que implementa o YOLO; treina, exporta e executa o modelo;
-- OpenCV: biblioteca para lidar com imagens e vídeos. No projeto, registra as os frames da câmera;
-- Roboflow: uma das plataformas online para anotar as imagens e organizar o dataset;
+- **Ultralytics:** biblioteca Python que implementa o YOLO; treina, exporta e executa o modelo;
+- **OpenCV:** biblioteca para lidar com imagens e vídeos. No projeto, registra as os frames da câmera;
+- **Roboflow:** uma das plataformas online para anotar as imagens e organizar o dataset;
 
-## 4. Estrutura de Pastas
+## 4. Treinamento
+
+Na prática, ocorre de forma simples. É realizado rodando _Treiner.py_ no terminal. O modelo pode ser treinado diretamente no PC utilizando a GPU. Caso necessário, também é possível rodar no _Google Colab_ ou na CPU de forma mais lenta, se a GPU não for NVIDIA.
+
+### 4. 1. Passo a Passo
+1. coletar fotos do(s) objeto(s) e cenários de interesse, com diversidade de luminosidade, distância e angulação.
+2. criar um projeto no *RoboFlow* ou outro ambiente de classificação, fazer upload das fotos e anotar manualmente com a opção *bounding box tool*.
+3. exportar no formato YOLO para 'VisãoComputacional/dataset/', junto com 'data.yaml'.
+4. conferir ordem das pastas do dataset. A estrutura precisa estar como no item 5 deste documento.
+5. garantir biblioteca ultralytics instalada no ambiente.
+6. acessar a pasta e rodar "python Treiner.py.
+7. o **best_ncnn_model* deve ser resultado e estar no caminho indicado.
+
+### 4. 2. configuração
+    Todos estes parâmetros podem ser adaptados a um possível novo treinamento.
+```python
+model.train(
+    data=yaml_path,     
+    epochs=100,
+    imgsz=320,          # resolucao baixa para inferencia rapida
+    batch=32,
+    patience=20, 
+    device=0,           # usa a placa de video local
+    project=runs_dir,
+    name='trekking_ncnn',
+    save=True
+)
+```
+## 5. Estrutura de Pastas
     VisãoComputacional
-        ├───best_ncnn_model
-        └───dataset
-            └───train
-                ├───images
-                └───labels
-## 5. Treinamento
-
-
-### 5. 1. Exportação do Modelo
+        ├── Treiner.py 
+        ├── DocumentacaoYolo.md  
+        ├── best_ncnn_model/     
+        └── dataset/
+            ├── data.yaml        
+            └── train/
+                ├── images/       
+                └── labels/       
 
 ## 6. Integração ao Robô
-    //no ia_trekking tem a opcao da flag --visual pra acompanhar o que a camera ta vendo
+O modelo é usado no arquivo **\robo_trekkig\software\ArduinoUnoQ\ia_trekking.py**, que roda no Linux do Arduino UNO Q. É executado em loop: **capturar frame → detectar cone → calcular posição e distância → enviar ao MCU**.
 
-### 6. 1. 
+### 6. 1. carregamento, inferência e cálculo de posição respectivamente.
 
+```python
+MODEL_PATH = str(BASE_DIR.parent / "VisãoComputacional" / "best_ncnn_model")
+model = YOLO(MODEL_PATH, task='detect')
+```
+
+```python
+results = model(frame, conf=0.8, imgsz=320, verbose=False)
+```
+
+```python
+def CalcularDirecao(cx):                        # cx é o centro horizontal
+    gradiente = int((cx - 320) * 255 / 320)     # 320 é o centro da imagem
+    return max(-255, min(255, gradiente))
+```
+
+### 6. 2. comunicação e envio ao MCU
+
+```python
+bridge.call("processa_direcao", gradiente, modo)    # comando interno do arduino entre MPU e MCU
+```
+### 6. 3. opção modo visual
+- conectando via ssh, rodando o programa no terminal com a flag *--visual*, é possível conferir o que a câmera vê, e os dados registrados em tempo real, acessando http://192.168.1.194:8000/video.
+
+```bash
+python3 ia_trekking.py --visual
+```
 
 
 ## 7. Referências
- - https://docs.arduino.cc/resources/datasheets/ABX00162-ABX00173-datasheet.pdf
+1. datasheet Arduino UNO Q: https://docs.arduino.cc/resources/datasheets/ABX00162-ABX00173-datasheet.pdf
+2. documentação oficial YOLO: https://docs.ultralytics.com/pt
+3. plataforma de anotação: https://roboflow.com
+4. projeto: https://github.com/LARM-UFSC/robo_trekking
 
-
-
-//descrever onde usa o modelo no ia.python
 
