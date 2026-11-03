@@ -1,4 +1,4 @@
-# visão computacional RoboTrekking
+# Visão Computacional RoboTrekking
 > Documentação da parte de detecção de objetos embarcada
 
 > Última atualização: 03/11/2026 por Arthur Fogliato
