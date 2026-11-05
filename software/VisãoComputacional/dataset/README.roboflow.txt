@@ -1,8 +1,8 @@
 
-cone - vdataset cone-35rpk
+cone - v1 2026-11-05 10:18am
 ==============================
 
-This dataset was exported via roboflow.com on September 9, 2026 at 11:46 AM GMT
+This dataset was exported via roboflow.com on November 5, 2026 at 1:45 PM GMT
 
 Roboflow is an end-to-end computer vision platform that helps you
 * collaborate with your team on computer vision projects
@@ -17,7 +17,14 @@ visit https://github.com/roboflow/notebooks
 
 To find over 100k other datasets and pre-trained models, visit https://universe.roboflow.com
 
-The dataset includes 110 images.
+The dataset includes 389 images.
 Cone are annotated in YOLO26 format.
 
-No pre-processing or augmentation was applied.
+The following pre-processing was applied to each image:
+* Auto-orientation of pixel data (with EXIF-orientation stripping)
+* Resize to 512x512 (Stretch)
+
+The following augmentation was applied to create 3 versions of each source image:
+* Random rotation of between -15 and +15 degrees
+
+
